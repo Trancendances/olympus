@@ -112,17 +112,27 @@ export class PluginConnector {
 	private deleteElement(element: Data, next:(err: Error | null) => void) {}
 	private deleteRange(options: Options, next:(err: Error | null) => void) {}
 
-	// TODO
-	public changeState(newState: State, next:(err: Error | null) => void) {}
+	public setState(newState: State, next:(err: Error | null, newState?: State) => void) {
+		// We only run the query if the database has been synchronised
+		if(sequelizeWrapper.isSync()) {
+			this.model.plugin.update({ state: newState }, <s.UpdateOptions>{
+				where: <s.WhereOptions>{
+					dirname: this.pluginName
+				},
+				returning: true
+			}).then((row) => {
+				// First row is the number of elements updated (which is 0 or 1)
+				// So we take the first (and only) row of the second row
+				next(null, <State>row[1][0].get('state'));
+			}).catch(next);
+		}
+	}
 	
 	public getState(next: (err: Error | null, state?: State) => void) {
 		// We only run the query if the database has been synchronised
 		if(sequelizeWrapper.isSync()) {
-			// We know from the database's constraints that there is only one
-			// row for a given plugin's dirname
-			this.model.plugin.findOne(<s.FindOptions>{
-				where: <s.WhereOptions>{ dirname: this.pluginName }
-			}).then((row) => {
+			// The plugin's dirname is it's primary key
+			this.model.plugin.findById(this.pluginName).then((row) => {
 				// Only send the state
 				next(null, <State>row.get('state'));
 			}).catch(next); // If there's an error, catch it and send it
