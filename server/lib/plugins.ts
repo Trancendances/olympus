@@ -149,6 +149,10 @@ export class PluginConnector {
 			.catch(next); // If there's an error, catch it and send it
 		}
 	}
+	
+	// TODO
+	// Warning: User.role == admin => level = AccessLevel(readwrite)
+	public getAccessLevel(username: string, next:(err: Error, level: AccessLevel) => void) {}
 }
 
 // Generate a Sequelize WhereOptions instance if needed from the options
