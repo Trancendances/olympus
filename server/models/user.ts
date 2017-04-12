@@ -17,5 +17,9 @@ module.exports = <sequelize.DefineAttributes>{
 	salt: <sequelize.DefineAttributeColumnOptions>{
 		type: sequelize.TEXT,
 		allowNull: false
+	},
+	role: <sequelize.DefineAttributeColumnOptions>{
+		type: sequelize.ENUM('admin', 'editor', 'reader'),
+		allowNull: false
 	}
 }
