@@ -1,0 +1,29 @@
+{
+  "name": "zeus",
+  "version": "0.1.0",
+  "description": "Modular back-office of Trancendances's new website",
+  "contributors": [
+    {
+      "name": "Brendan Abolivier",
+      "email": "brendan@trancendances.fr"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Trancendances/zeus.git"
+  },
+  "dependencies": {
+    "@types/node": "7.0.12",
+    "@types/sequelize": "3.4.43",
+    "americano": "0.4.5",
+    "passport": "0.3.2",
+    "pg": "6.1.5",
+    "pg-native": "1.10.0",
+    "sequelize": "3.30.4",
+    "typescript": "2.2.2"
+  },
+  "scripts": {
+    "watch": "tsc -p server -w",
+    "build": "tsc -p server"
+  }
+}
