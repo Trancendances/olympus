@@ -103,7 +103,6 @@ export class PluginConnector {
 	public deleteData(data: Data, next:(err: Error | null) => void): void;
 	public deleteData(options: Options, next:(err: Error | null) => void): void;
 
-	// TODO
 	public deleteData(arg: Data | Options, next:(err: Error | null) => void) {
 		if(arg instanceof Data) this.deleteElement(arg, next);
 		if(arg instanceof Options) this.deleteRange(arg, next);
