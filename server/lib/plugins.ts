@@ -33,6 +33,7 @@ export enum State {
 }
 
 export enum AccessLevel {
+	none,
 	readonly,
 	readwrite
 }
@@ -93,8 +94,23 @@ export class PluginConnector {
 		}
 	}
 	
-	// TODO
-	public addData(data: Data, next:(err: Error | null, data?: Data) => void) {}
+	public addData(data: Data, next:(err: Error | null) => void) {
+		// We only run the query if the database has been synchronised
+		if(sequelizeWrapper.isSync()) {
+			if(!data.timestamp) {
+				// The timestamp will be the data's unique identifier, so
+				// we need it
+				return next(new Error('TIMESTAMP_MISSING'));
+			}
+
+			// Create the database entry
+			this.model.data.create(<s.CreateOptions>{
+				plugin: this.pluginName,
+				data: data
+			}).then(next) // No result
+			.catch(next); // If there's an error, catch it and send it
+		}
+	}
 	
 	// TODO
 	public updateData(oldData: Data, newData: Data, next:(err: Error | null, data?: Data) => void) {}
@@ -112,19 +128,15 @@ export class PluginConnector {
 	private deleteElement(element: Data, next:(err: Error | null) => void) {}
 	private deleteRange(options: Options, next:(err: Error | null) => void) {}
 
-	public setState(newState: State, next:(err: Error | null, newState?: State) => void) {
+	public setState(newState: State, next:(err: Error | null) => void) {
 		// We only run the query if the database has been synchronised
 		if(sequelizeWrapper.isSync()) {
 			this.model.plugin.update({ state: newState }, <s.UpdateOptions>{
 				where: <s.WhereOptions>{
 					dirname: this.pluginName
-				},
-				returning: true
-			}).then((row) => {
-				// First row is the number of elements updated (which is 0 or 1)
-				// So we take the first (and only) row of the second row
-				next(null, <State>row[1][0].get('state'));
-			}).catch(next);
+				}
+			}).then(() => { next(null) }) // No result
+			.catch(next);
 		}
 	}
 	
@@ -132,10 +144,9 @@ export class PluginConnector {
 		// We only run the query if the database has been synchronised
 		if(sequelizeWrapper.isSync()) {
 			// The plugin's dirname is it's primary key
-			this.model.plugin.findById(this.pluginName).then((row) => {
-				// Only send the state
-				next(null, <State>row.get('state'));
-			}).catch(next); // If there's an error, catch it and send it
+			this.model.plugin.findById(this.pluginName)
+			.then((row) => { next(null, <State>row.get('state')); })
+			.catch(next); // If there's an error, catch it and send it
 		}
 	}
 }
