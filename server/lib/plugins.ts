@@ -41,9 +41,10 @@ export enum AccessLevel {
 export class PluginConnector {
 	private readonly pool;
 	private readonly model: {
-		plugin: s.Model<any,any>,
 		access: s.Model<any,any>,
-		data: s.Model<any,any>
+		data: s.Model<any,any>,
+		plugin: s.Model<any,any>,
+		user: s.Model<any,any>
 	};
 	private static instances: {
 		[pluginName: string]: PluginConnector;
@@ -51,9 +52,10 @@ export class PluginConnector {
 	
 	private constructor(private readonly pluginName: string) {
 		this.model = {
-			plugin: sequelizeWrapper.getInstance().model('plugin'),
 			access: sequelizeWrapper.getInstance().model('plugin_access'),
-			data: sequelizeWrapper.getInstance().model('plugin_data')
+			data: sequelizeWrapper.getInstance().model('plugin_data'),
+			plugin: sequelizeWrapper.getInstance().model('plugin'),
+			user: sequelizeWrapper.getInstance().model('user')
 		}
 	}
 	
@@ -150,9 +152,52 @@ export class PluginConnector {
 		}
 	}
 	
-	// TODO
-	// Warning: User.role == admin => level = AccessLevel(readwrite)
-	public getAccessLevel(username: string, next:(err: Error, level: AccessLevel) => void) {}
+	// Returns the user's access level on the plugin as a member of the AccessLevel enum
+	public getAccessLevel(username: string, next:(err: Error | null, level?: AccessLevel) => void) {
+		if(sequelizeWrapper.isSync()) {
+			isAdmin(username, this.model.user, (err, admin) => {
+				if(err) return next(err);
+				// If the user is admin on the platform, it gives it read/write
+				// access to all plugins
+				if(admin) return next(null, AccessLevel.readwrite);
+				// If the user isn't admin, we check the access level relative
+				// to the plugin
+				this.model.access.findOne(<s.FindOptions>{
+					where: <s.WhereOptions>{
+						plugin: this.pluginName,
+						user: username
+					}
+				}).then((row) => {
+					// Casting the level as a string, because else TypeScript
+					// assumes it to be an integer, and the whole thing to 
+					// return a string
+					if(row) next(null, AccessLevel[<string>row.get('level')]);
+					else next(null, AccessLevel.none);
+				})
+			})
+		}
+	}
+}
+
+// We don't need to export this one: the plugin doesn't need to know the user's
+// global role
+enum Role {
+	reader,
+	admin,
+	editor
+}
+
+// Use a given Sequelize model to check if a user with a given username is admin
+function isAdmin(username: string, model: s.Model<any,any>, next:(err: Error | null, admin?: boolean) => void): void {
+	// Find user from its unique username
+    model.findById(username).then((row) => {
+		// If no user, well, no admin
+		if(!row) next(null, false);
+		// Compare the role with the one we have in the Role enum
+		else if(row.get('role') === Role[Role.admin]) next(null, true);
+		// If it doesn't match, no admin
+		else next(null, false);
+	}).catch(next); // Error handling
 }
 
 // Generate a Sequelize WhereOptions instance if needed from the options
