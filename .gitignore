@@ -38,3 +38,6 @@ jspm_packages
 
 # Settings file
 settings.json
+
+# Occasionnal test files
+test*
