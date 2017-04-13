@@ -24,6 +24,7 @@ class SequelizeWrapper {
 				host: config.host,
 				port: config.port,
 				dialect: 'postgres',
+				logging: false,
 				define: <s.DefineOptions<any>>{
 					timestamps: false
 				}
@@ -37,17 +38,20 @@ class SequelizeWrapper {
 			instance.define('plugin_access', require('../models/pluginAccess'), { freezeTableName: true });
 			
 			// Create the tables if they don't already exist
-			instance.sync().then(() => {
-				log.info('Database synchronised');
-				this.sync = true;
-			});
 			
 			this.instance = instance;
 		}
 
 		return this.instance;
 	}
-
+	
+	public static syncModels(params?: s.SyncOptions) {
+		this.instance.sync(params).then(() => {
+			log.info('Database synchronised');
+			this.sync = true;
+		});
+	}
+	
 	public static isSync() {
 		return this.sync;
 	}
