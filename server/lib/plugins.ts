@@ -54,7 +54,8 @@ export class PluginConnector {
 	private static instances: {
 		[pluginName: string]: PluginConnector;
 	};
-	
+
+	// Set the plugin name and load the necessery models
 	private constructor(private readonly pluginName: string) {
 		this.model = {
 			access: sequelizeWrapper.getInstance().model('plugin_access'),
@@ -63,7 +64,8 @@ export class PluginConnector {
 			user: sequelizeWrapper.getInstance().model('user')
 		}
 	}
-	
+
+	// Get a singleton-ised instance of the connector corresponding to the plugin
 	public static getInstance(pluginName: string) {
 		if(!this.instances) {
 			this.instances = {}; // Initialisation to empty object
@@ -74,6 +76,7 @@ export class PluginConnector {
 		return this.instances[pluginName];
 	}
 
+	// Retrieve data from the database using given filters
 	public getData(options: Options, next:(err: Error | null, data?: Data[]) => void) {
 
 		// Basic WhereOptions
@@ -98,7 +101,8 @@ export class PluginConnector {
 			next(null, result);
 		}).catch(next); // If there's an error, catch it and send it
 	}
-	
+
+	// Save the given data in the database
 	public addData(data: Data, next:(err: Error | null) => void) {
 		if(!data.timestamp) {
 			// The timestamp will be the data's unique identifier, so
@@ -126,7 +130,13 @@ export class PluginConnector {
 	
 	// Update a data row in the database. The old row is fully replaced by the new one
 	// so any missing data is removed
-	public updateData(oldData: Data, newData: Data, next:(err: Error | null) => void) {
+	public replaceData(oldData: Data, newData: Data, next:(err: Error | null) => void) {
+		if(!newData.timestamp) {
+			// The timestamp will be the data's unique identifier, so
+			// we need it
+			return next(new Error('TIMESTAMP_MISSING'));
+		}
+
 		this.model.data.update({ data: newData }, <s.UpdateOptions>{
 			where: <s.WhereOptions> {
 				plugin: this.pluginName,
