@@ -5,7 +5,7 @@ module.exports = {
         use: [
             americano.bodyParser(),
             americano.methodOverride(),
-            americano.static(__dirname + '/../client/public', {
+            americano.static(__dirname + '/../../client/public', {
                 maxAge: 86400000
             })
         ],
