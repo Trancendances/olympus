@@ -38,6 +38,11 @@ export enum AccessLevel {
 	readwrite
 }
 
+// Plugin Connector class
+// This is the class plugins will be using to interact with the database. This
+// way, plugins won't have much knowledge of sensitive user data that doesn't
+// concern them. This will be upgraded in the future with a permission system,
+// allowing plugins to dialog with each other
 export class PluginConnector {
 	private readonly pool;
 	private readonly model: {
@@ -135,18 +140,23 @@ export class PluginConnector {
 		}).catch(next);
 	}
 
-	// Prototypes for method overload
-	public deleteData(data: Data, next:(err: Error | null) => void): void;
-	public deleteData(options: Options, next:(err: Error | null) => void): void;
+	// Delete data from the database selected from the given options
+	public deleteData(options: Options, next:(err: Error | null) => void) {
+		// Basic WhereOptions
+		let whereOptions: s.WhereOptions = { plugin: this.pluginName };
 
-	public deleteData(arg: Data | Options, next:(err: Error | null) => void) {
-		if(arg instanceof Data) this.deleteElement(arg, next);
-		if(arg instanceof Options) this.deleteRange(arg, next);
+		// Generate the "WhereOptions" object on the "data" column from the
+		// options we got as parameter
+		let data: s.WhereOptions | null = getDataWhereOptions(options);
+
+		// Include conditions on the "data" column only if they exist
+		if(data) whereOptions.data = data;
+
+		this.model.data.destroy(<s.DestroyOptions>{
+			where: whereOptions
+		}).then(() => { next(null); })
+		.catch(next);
 	}
-
-	// TODO
-	private deleteElement(element: Data, next:(err: Error | null) => void) {}
-	private deleteRange(options: Options, next:(err: Error | null) => void) {}
 
 	// Set the plugin state
 	public setState(newState: State, next:(err: Error | null) => void) {
