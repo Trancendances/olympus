@@ -206,8 +206,63 @@ export class PluginConnector {
 				// return a string
 				if(row) next(null, AccessLevel[<string>row.get('level')]);
 				else next(null, AccessLevel.none);
-			})
+			}).catch(next);
 		})
+	}
+
+	// Set access level on the plugin for a given user
+	public setAccessLevel(username: string, level: AccessLevel, next:(err: Error | null) => void) {
+		isAdmin(username, this.model.user, (err, admin) => {
+			if(err) return next(err);
+			// If the user is admin on the platform, it gives it read/write
+			// access to all plugins, so we can't change it
+			if(admin) return next(new Error('IS_ADMIN'));
+			// If the user isn't admin, we check if there's an access level to
+			// add or update
+			this.model.access.count(<s.CountOptions>{
+				where: <s.WhereOptions>{
+					plugin: this.pluginName,
+					user: username
+				}
+			}).then((count) => {
+				// No row exists for this user: it has no access on the plugin.
+				// Let's create one.
+				if(!count) {
+					// If the access level is "none", don't create a row
+					if(level === AccessLevel.none) next(null)
+					this.model.access.create(<s.CreateOptions>{
+						plugin: this.pluginName,
+						user: username,
+						level: AccessLevel[level]
+					}).then(() => { next(null) })
+					.catch(next);
+				} else {
+					// A row already exists, we update it or delete it.
+					if(level === AccessLevel.none) {
+						// Passing an access level to none means removing the
+						// row from the database
+						this.model.access.destroy(<s.DestroyOptions>{
+							where: <s.WhereOptions>{
+								plugin: this.pluginName,
+								user: username
+							}
+						}).then(() => { next(null); })
+						.catch(next);
+					} else {
+						// If the access level isn't "none", just update the row
+						this.model.access.update({
+							level: AccessLevel[level]
+						}, <s.UpdateOptions>{
+							where: <s.WhereOptions> {
+								plugin: this.pluginName,
+								user: username
+							}
+						}).then(() => { next(null); })
+						.catch(next);
+					}
+				}
+			});
+		});
 	}
 }
 
