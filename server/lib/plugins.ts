@@ -9,7 +9,23 @@ export abstract class Data {
 	timestamp: number;
 	name: string;
 	content: string;
+	status: string;
 	meta?: MetaData
+
+	// Checks if given data is valid according to its model
+	// Used to check user input at runtime
+	public static isValid(data: Data) {
+		if(!data.type || !data.timestamp || !data.name || !data.content || !data.status) {
+			return false;
+		}
+
+		// Check if the status is in the correct format
+		if(['draft', 'unlisted', 'published'].indexOf(data.status) < 0) {
+			return false;
+		}
+
+		return true;
+	}
 }
 
 export abstract class MetaData {
@@ -66,6 +82,7 @@ export class PluginConnector {
 	}
 
 	// Get a singleton-ised instance of the connector corresponding to the plugin
+	// TODO: Check if the plugin exists
 	public static getInstance(pluginName: string) {
 		if(!this.instances) {
 			this.instances = {}; // Initialisation to empty object
@@ -78,7 +95,6 @@ export class PluginConnector {
 
 	// Retrieve data from the database using given filters
 	public getData(options: Options, next:(err: Error | null, data?: Data[]) => void) {
-
 		// Basic WhereOptions
 		let whereOptions: s.WhereOptions = { plugin: this.pluginName };
 		
@@ -98,7 +114,7 @@ export class PluginConnector {
 			// Get only the "data" column for each element
 			rows.map((row) => { result.push(<Data>row.get('data')); });
 			// Send the result
-			next(null, result);
+			return next(null, result);
 		}).catch(next); // If there's an error, catch it and send it
 	}
 
@@ -195,7 +211,7 @@ export class PluginConnector {
 			if(admin) return next(null, AccessLevel.readwrite);
 			// If the user isn't admin, we check the access level relative
 			// to the plugin
-			this.model.access.findOne(<s.FindOptions>{
+			return this.model.access.findOne(<s.FindOptions>{
 				where: <s.WhereOptions>{
 					plugin: this.pluginName,
 					user: username
@@ -279,11 +295,11 @@ function isAdmin(username: string, model: s.Model<any,any>, next:(err: Error | n
 	// Find user from its unique username
     model.findById(username).then((row) => {
 		// If no user, well, no admin
-		if(!row) next(null, false);
+		if(!row) return next(null, false);
 		// Compare the role with the one we have in the Role enum
-		else if(row.get('role') === Role[Role.admin]) next(null, true);
+		if(row.get('role') === Role[Role.admin]) return next(null, true);
 		// If it doesn't match, no admin
-		else next(null, false);
+		return next(null, false);
 	}).catch(next); // Error handling
 }
 
