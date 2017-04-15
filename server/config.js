@@ -1,6 +1,10 @@
-var americano = require('americano');
+var americano   = require('americano'),
+    fs          = require('fs'),
+    path        = require('path');
 
-module.exports = {
+var root = path.resolve('./build');
+
+var config = {
     common: {
         use: [
             americano.bodyParser(),
@@ -23,3 +27,21 @@ module.exports = {
         americano.logger('short')
     ]
 };
+
+var plugins = fs.readdirSync(path.join(root, 'plugins')).filter(file => fs.statSync(path.join(root, 'plugins', file)).isDirectory());
+
+// Add plugin's public directories as static routes
+// TODO: Check if [plugin]/public exists
+for(plugin of plugins) {
+    let pluginPublicPath = path.join(root, 'plugins', plugin, 'public');
+    let pluginSlug = require(path.join(root, 'plugins', plugin, 'package.json')).name;
+    
+    config.common.use.push([
+        '/' + pluginSlug,
+        americano.static(pluginPublicPath, {
+            maxAge: 86400000
+        })
+    ]);
+}
+
+module.exports = config;

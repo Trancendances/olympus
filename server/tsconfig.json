@@ -9,7 +9,8 @@
         "strictNullChecks": true,
         "types": [
             "node",
-            "sequelize"
+            "sequelize",
+            "express"
         ]
     },
     "compileOnSave": false
