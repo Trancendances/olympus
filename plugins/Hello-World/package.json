@@ -1,0 +1,16 @@
+{
+	"name": "hello-world",
+	"displayedName": "Hello world!",
+	"description": "Zeus's hello world/dummy plugin",
+	"contributors": [
+      {
+        "name": "Brendan Abolivier",
+        "email": "brendan@trancendances.fr"
+      }
+    ],
+	"schema": {
+		"name": {
+			"type": "string"
+		}
+	}
+}
