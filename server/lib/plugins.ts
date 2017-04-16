@@ -1,10 +1,12 @@
 import * as s from 'sequelize';
 
-const sequelizeWrapper = require('../utils/sequelizeWrapper');
+const path				= require('path');
+const revalidator		= require('revalidator');
+const sequelizeWrapper	= require('../utils/sequelizeWrapper');
 
 // Data models for plugin's data and metadata
 
-export abstract class Data {
+export abstract class Data extends Object {
 	type: string;
 	timestamp: number;
 	name: string;
@@ -18,6 +20,12 @@ export abstract class Data {
 		if(!data.type || !data.timestamp || !data.name || !data.content || !data.status) {
 			return false;
 		}
+		
+		if(data.meta) {
+			if(!(data.meta instanceof Object)) {
+				return false;
+			}
+		}
 
 		// Check if the status is in the correct format
 		if(['draft', 'unlisted', 'published'].indexOf(data.status) < 0) {
@@ -28,13 +36,13 @@ export abstract class Data {
 	}
 }
 
-export abstract class MetaData {
+export abstract class MetaData extends Object {
 	[property: string]: any;
 }
 
 // Data model for query option
 
-export abstract class Options {
+export abstract class Options extends Object {
 	type?: string;
 	number: number;
 	startTimestamp?: number;
@@ -43,7 +51,6 @@ export abstract class Options {
 // Enumerations used in the database
 
 export enum State {
-	uninstalled,
 	disabled,
 	enabled
 }
@@ -81,17 +88,58 @@ export class PluginConnector {
 		}
 	}
 
+	// STATIC
+
 	// Get a singleton-ised instance of the connector corresponding to the plugin
-	// TODO: Check if the plugin exists
-	public static getInstance(pluginName: string) {
+	public static getInstance(pluginName: string, next:(err: Error | null, instance?: PluginConnector) => void) {
 		if(!this.instances) {
 			this.instances = {}; // Initialisation to empty object
 		}
 		if(!this.instances[pluginName]) {
-			this.instances[pluginName] = new PluginConnector(pluginName);
+			sequelizeWrapper.getInstance().model('plugin').count(<s.CountOptions>{ 
+				where: <s.WhereOptions>{ dirname: pluginName }
+			}).then((count) => {
+				this.instances[pluginName] = new PluginConnector(pluginName);
+				if(!count) {
+					this.register(pluginName, (err) => {
+						if(err) return next(err);
+						return next(null, this.instances[pluginName]);
+					});
+				} else {
+					return next(null, this.instances[pluginName]);
+				}
+			});
+		} else {
+			return next(null, this.instances[pluginName]);
 		}
-		return this.instances[pluginName];
 	}
+
+	// If the plugin doesn't exist, getInstance will register it in the database
+	private static register(pluginName: string, next:(err: Error | null) => void) {
+		let pluginsRoot: string = path.resolve('./build/plugins'); // Build root
+		let confPath: string = path.join(pluginsRoot, pluginName, 'package.json');
+		try { // Check if package.json exists
+			let conf = require(confPath);
+			// Load the name, description and the metadata schema if exist
+			let name = conf.displayedName || pluginName;
+			let description = conf.description || null;
+			let schema = conf.schema || null;
+			
+			// We don't need to count the rows, as getInstance already does it before
+			sequelizeWrapper.getInstance().model('plugin').create(<s.CreateOptions>{
+				dirname: pluginName,
+				name: name,
+				description: description,
+				schema: { properties: schema },
+				state: State[State.disabled]
+			}).then(() => { return next(null); })
+			.catch(next);
+		} catch(e) {
+			return next(e);
+		}
+	}
+
+	// PUBLIC
 
 	// Retrieve data from the database using given filters
 	public getData(options: Options, next:(err: Error | null, data?: Data[]) => void) {
@@ -135,12 +183,20 @@ export class PluginConnector {
 			// A timestamp must be unique as it is how we'll be identifying data
 			// for the plugin
 			if(count) return next(new Error('TIMESTAMP_EXISTS'));
-			// Create the database entry
-			this.model.data.create(<s.CreateOptions>{
-				plugin: this.pluginName,
-				data: data
-			}).then(() => { next(null) }) // No result
-			.catch(next); // If there's an error, catch it and send it
+			// Now check if the "meta" object respects the plugin schema if exists
+			this.isSchemaValid(data, (err, valid) => {
+				if(err) return next(err);
+				if(valid) {
+					// Create the database entry
+					this.model.data.create(<s.CreateOptions>{
+						plugin: this.pluginName,
+						data: data
+					}).then(() => { next(null) }) // No result
+					.catch(next); // If there's an error, catch it and send it
+				} else {
+					return next(new Error('METADATA_MISMATCH'))
+				}
+			});
 		});
 	}
 	
@@ -153,17 +209,26 @@ export class PluginConnector {
 			return next(new Error('TIMESTAMP_MISSING'));
 		}
 
-		this.model.data.update({ data: newData }, <s.UpdateOptions>{
-			where: <s.WhereOptions> {
-				plugin: this.pluginName,
-				data: oldData
+		// Now check if the "meta" object respects the plugin schema if exists
+		this.isSchemaValid(newData, (err, valid) => {
+			if(err) return next(err);
+			if(valid) {
+				// Replace the database entry
+				this.model.data.update({ data: newData }, <s.UpdateOptions>{
+					where: <s.WhereOptions> {
+						plugin: this.pluginName,
+						data: oldData
+					}
+				}).then((result) => {
+					// If no row were updated, it means we got the original data wrong
+					// so raise an error
+					if(!result[0]) next(new Error('NO_ROW_UPDATED'));
+					else next(null);
+				}).catch(next);
+			} else {
+				return next(new Error('METADATA_MISMATCH'))
 			}
-		}).then((result) => {
-			// If no row were updated, it means we got the original data wrong
-			// so raise an error
-			if(!result[0]) next(new Error('NO_ROW_UPDATED'));
-			else next(null);
-		}).catch(next);
+		});
 	}
 
 	// Delete data from the database selected from the given options
@@ -280,6 +345,40 @@ export class PluginConnector {
 			});
 		});
 	}
+
+	// PRIVATE
+
+	// Check if the provided metadata is valid agains the plugin schema
+	private isSchemaValid(data: Data, next:(err: Error | null, valid?: boolean) => void) {
+		// Check if a schema is defined first
+		this.model.plugin.findById(this.pluginName).then((row) => {
+			let schema = row.get('schema');
+			if(schema && Object.keys(schema).length) {
+				// Determining if the "meta" sub-object is required
+				let required: boolean = false;
+				for(let metadata in schema) {
+					if(schema[metadata].required) required = true;
+				}
+				// Run the check only if at least one metadata is required
+				if(data.meta && Object.keys(data.meta).length) {
+					// Run the check
+					if(revalidator.validate(data.meta, schema).valid) {
+						return next(null, true);
+					} else {
+						return next(null, false);
+					}
+				} else if(!required) {
+					// If no metadata are required, we don't care if there's a
+					// "meta" sub-object or not
+					return next(null, true);
+				} else {
+					return next(null, false); // No metadata where metadata was expected
+				}
+			} else {
+				return next(null, true); // No schema in db: No need to check
+			}
+		}).catch(next);
+	}
 }
 
 // We don't need to export this one: the plugin doesn't need to know the user's
@@ -325,4 +424,8 @@ function getDataWhereOptions(options: Options): s.WhereOptions | null {
 	}
 	
 	return data;
+}
+
+function isSchemaValid(metadata: MetaData, next:(err: Error | null, valid?: boolean) => void): void {
+	
 }

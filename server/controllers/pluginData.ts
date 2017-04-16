@@ -4,20 +4,26 @@ import * as e from 'express';
 // TODO: Check auth headers
 
 function handleErr(err: Error, res: e.Response): void {
+	let code: number;
+
 	// Special cases
 	switch(err.message) {
 		case 'TIMESTAMP_EXISTS':
 		case 'TIMESTAMP_MISSING':
 		case 'NO_ROW_UPDATED':
-			res.sendStatus(400);
+		case 'METADATA_MISMATCH':
+		case 'DATA_INVALID':
+			code = 400;
 			break;
 		case 'IS_ADMIN':
-			res.sendStatus(403);
+			code = 403;
 			break;
 		default:
 			console.error(err);
-			res.sendStatus(500);
+			code = 500;
 	}
+
+	res.status(code).send(err.message);
 }
 
 module.exports.get = function(req: e.Request, res: e.Response) {
@@ -28,7 +34,10 @@ module.exports.get = function(req: e.Request, res: e.Response) {
 	}
 
 	// Grab a connector and load the elements number
-	let connector = p.PluginConnector.getInstance(req.params.plugin);
+	p.PluginConnector.getInstance(req.params.plugin, (err, connector) => {
+		if(err) return handleErr(err, res);
+		// Check if connector is here, cause else TS will complain at compilation
+		if(!connector) return handleErr(new Error('CONNECTOR_MISSING'), res);
 
 		let options: p.Options = <p.Options>{ number: parseInt(req.query.number) };
 		
@@ -37,7 +46,7 @@ module.exports.get = function(req: e.Request, res: e.Response) {
 		if(req.query.type) options.type = req.query.type;
 		
 		// Run the query
-		connector.getData(options, (err, data) => {
+		return connector.getData(options, (err, data) => {
 			if(err) return handleErr(err, res);
 			// Check the user's access level before returning the data
 			connector.getAccessLevel('brendan', (err, level) => { // TODO: Replace hard-coded username
@@ -55,24 +64,51 @@ module.exports.get = function(req: e.Request, res: e.Response) {
 			})
 			return res.status(200).send(data);
 		})
+	});
+
 }
 
+// TODO: Check access level
 module.exports.add = function(req: e.Request, res: e.Response) {
 	// Check if the data is valid
 	if(p.Data.isValid(req.body)) {
 		// If data is valid, load the connector
-		let connector = p.PluginConnector.getInstance(req.params.plugin);
-		// Run the query
-		connector.addData(<p.Data>req.body, (err) => {
+		p.PluginConnector.getInstance(req.params.plugin, (err, connector) => {
 			if(err) return handleErr(err, res);
-			res.sendStatus(200);
+			// Check if connector is here, cause else TS will complain at compilation
+			if(!connector) return handleErr(new Error('CONNECTOR_MISSING'), res);
+
+			// Run the query
+			return connector.addData(<p.Data>req.body, (err) => {
+				if(err) return handleErr(err, res);
+				res.sendStatus(200);
+			});
 		});
 	} else {
 		// If the data is invalid: 400 Bad Request
-		res.sendStatus(400);
+		return handleErr(new Error('DATA_INVALID'), res);
 	}
 }
 
-module.exports.replace = function(req: e.Request, res: e.Response) {}
+// TODO: Check access level
+module.exports.replace = function(req: e.Request, res: e.Response) {
+	// Check if all of the data is valid
+	if(p.Data.isValid(req.body.old) && p.Data.isValid(req.body.new)) {
+		p.PluginConnector.getInstance(req.params.plugin, (err, connector) => {
+			if(err) return handleErr(err, res);
+			// Check if connector is here, cause else TS will complain at compilation
+			if(!connector) return handleErr(new Error('CONNECTOR_MISSING'), res);
+
+			// Run the query
+			return connector.replaceData(<p.Data>req.body.old, <p.Data>req.body.new, (err) => {
+				if(err) return handleErr(err, res);
+				res.sendStatus(200);
+			});
+		});
+	} else {
+		// If the data is invalid: 400 Bad Request
+		return handleErr(new Error('DATA_INVALID'), res);
+	}
+}
 
 module.exports.delete = function(req: e.Request, res: e.Response) {}
