@@ -1,10 +1,6 @@
 import * as s from 'sequelize';
 
 const printit = require('printit');
-const log = printit({
-	prefix: 'Utils::SequelizeWrapper',
-	date: true
-})
 
 // Load the configuration
 const path = require('path');
@@ -44,11 +40,16 @@ class SequelizeWrapper {
 
 		return this.instance;
 	}
-	
+
+	// Will only be called by the sync script
 	public static syncModels(params?: s.SyncOptions) {
 		this.instance.sync(params).then(() => {
-			log.info('Database synchronised');
+			console.info('Database synchronised');
 			this.sync = true;
+			process.exit(0);
+		}).catch((err) => {
+			console.error(err);
+			process.exit(1);
 		});
 	}
 	

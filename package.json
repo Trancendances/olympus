@@ -20,11 +20,14 @@
     "passport": "0.3.2",
     "pg": "6.1.5",
     "pg-native": "1.10.0",
+    "revalidator": "0.3.1",
     "sequelize": "https://github.com/sequelize/sequelize",
     "typescript": "2.2.2"
   },
   "scripts": {
     "watch": "tsc -p server -w",
-    "build": "tsc -p server && cp -R plugins build"
+    "build": "tsc -p server && cp -R plugins build",
+    "sync": "node ./build/server/scripts/syncdb.js",
+    "sync:force": "node ./build/server/scripts/syncdb.js --force"
   }
 }
