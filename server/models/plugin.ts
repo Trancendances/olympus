@@ -10,6 +10,8 @@ module.exports = <sequelize.DefineAttributes>{
 		type: sequelize.TEXT,
 		allowNull: false
 	},
+	description: sequelize.TEXT,
+	schema: sequelize.JSONB,
 	state: <sequelize.DefineAttributeColumnOptions>{
 		type: sequelize.ENUM('uninstalled', 'disabled', 'enabled'),
 		allowNull: false
