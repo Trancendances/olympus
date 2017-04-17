@@ -29,6 +29,7 @@
     "build": "tsc -p server",
     "sync": "node ./build/server/scripts/syncdb.js",
     "sync:force": "node ./build/server/scripts/syncdb.js --force",
-    "schema:update": "node ./build/server/scripts/updateschema.js"
+    "schema:update": "node ./build/server/scripts/updateschema.js",
+    "sethome": "node ./build/server/scripts/sethome.js"
   }
 }
