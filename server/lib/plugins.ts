@@ -201,7 +201,7 @@ export class PluginConnector {
 				return {
 					name: row.get('name'),
 					description: row.get('description'),
-					state: State[row.get('state')],
+					state: row.get('state'),
 					home: row.get('home')
 				};
 			});
@@ -233,7 +233,8 @@ export class PluginConnector {
 				home: this.isHome(pluginName)
 			}).then(() => {
 				log.info('Registered new plugin', pluginName);
-				return next(null);
+				next(null);
+				return null;
 			})
 			.catch(next);
 		} catch(e) {
@@ -403,7 +404,10 @@ export class PluginConnector {
 	public getState(next: (err: Error | null, state?: State) => void) {
 		// The plugin's dirname is it's primary key
 		this.model.plugin.findById(this.pluginName)
-		.then((row) => { return next(null, State[<string>row.get('state')]); })
+		.then((row) => {
+			next(null, State[<string>row.get('state')]);
+			return null;
+		})
 		.catch(next); // If there's an error, catch it and send it
 	}
 	
