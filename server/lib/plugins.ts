@@ -157,7 +157,7 @@ export class PluginConnector {
 			// Check if schema is defined
 			if(infos.schema) {
 				// If it is, format it so revalidator can use it
-				schema = { properties: infos.schema };
+				schema = infos.schema;
 			} else {
 				// Else, set it to null
 				schema = null;
