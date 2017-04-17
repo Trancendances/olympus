@@ -32,22 +32,24 @@ var config = {
 var plugins = fs.readdirSync(root).filter(file => fs.statSync(path.join(root, file)).isDirectory());
 
 // Add plugin's public directories as static routes
-// TODO: Check if [plugin]/public exists
 for(plugin of plugins) {
     // Get (unused) instance of the connector so the plugin gets registered if
     // it wasn't before
     pluginConnector.getInstance(plugin, (err) => {
         if(err) return console.error(err);
     });
+    // Get the plugin's public path
     let pluginPublicPath = path.join(root, plugin, 'public');
-    let pluginSlug = require(path.join(root, plugin, 'package.json')).name;
-    
-    config.common.use.push([
-        '/' + pluginSlug,
-        americano.static(pluginPublicPath, {
-            maxAge: 86400000
-        })
-    ]);
+    // Check if the plugin has a public directory
+    if(fs.existsSync(pluginPublicPath)) {
+        // Create a static route for the plugin
+        config.common.use.push([
+            '/' + pluginSlug,
+            americano.static(pluginPublicPath, {
+                maxAge: 86400000
+            })
+        ]);
+    }
 }
 
 module.exports = config;
