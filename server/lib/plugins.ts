@@ -370,7 +370,7 @@ export class PluginConnector {
 
 	// Get plugin infos from its package.json manifest
 	private static getPluginInfos(pluginName: string): PluginInfos {
-		let pluginsRoot: string = path.resolve('./build/plugins'); // Build root
+		let pluginsRoot: string = path.resolve('./plugins'); // Plugins root
 		let confPath: string = path.join(pluginsRoot, pluginName, 'package.json');
 		try { // Check if package.json exists
 			let conf = require(confPath);

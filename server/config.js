@@ -2,7 +2,7 @@ var americano   = require('americano'),
     fs          = require('fs'),
     path        = require('path');
 
-var root = path.resolve('./build');
+var root = path.resolve('./plugins');
 
 var config = {
     common: {
@@ -28,13 +28,13 @@ var config = {
     ]
 };
 
-var plugins = fs.readdirSync(path.join(root, 'plugins')).filter(file => fs.statSync(path.join(root, 'plugins', file)).isDirectory());
+var plugins = fs.readdirSync(root).filter(file => fs.statSync(path.join(root, file)).isDirectory());
 
 // Add plugin's public directories as static routes
 // TODO: Check if [plugin]/public exists
 for(plugin of plugins) {
-    let pluginPublicPath = path.join(root, 'plugins', plugin, 'public');
-    let pluginSlug = require(path.join(root, 'plugins', plugin, 'package.json')).name;
+    let pluginPublicPath = path.join(root, plugin, 'public');
+    let pluginSlug = require(path.join(root, plugin, 'package.json')).name;
     
     config.common.use.push([
         '/' + pluginSlug,
