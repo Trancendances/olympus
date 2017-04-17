@@ -1,8 +1,13 @@
 import * as s from 'sequelize';
+import {SequelizeWrapper} from '../utils/sequelizeWrapper';
 
 const path				= require('path');
 const revalidator		= require('revalidator');
-import {SequelizeWrapper} from '../utils/sequelizeWrapper';
+const printit			= require('printit');
+const log = printit({
+	date: true,
+	prefix: 'PluginConnector'
+})
 
 // Data models for plugin's data and metadata
 
@@ -170,7 +175,10 @@ export class PluginConnector {
 				schema: schema,
 				state: State[State.disabled],
 				home: this.isHome(pluginName)
-			}).then(() => { return next(null); })
+			}).then(() => {
+				log.info('Registered new plugin', pluginName);
+				return next(null);
+			})
 			.catch(next);
 		} catch(e) {
 			return next(e);
@@ -209,7 +217,7 @@ export class PluginConnector {
 	
 	// Check whether the plugin is defined as the home plugin in the app manifest
 	private static isHome(pluginName: string): boolean {
-		let homePluginName: string = path.resolve('./settings').home;
+		let homePluginName: string = require(path.resolve('./settings')).home;
 		if(!homePluginName) return false;
 		if(!homePluginName.localeCompare(pluginName)) return true;
 		return false;
