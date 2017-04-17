@@ -3,7 +3,7 @@ import {PluginConnector} from '../lib/plugins';
 const args = process.argv.slice(2);
 
 if(!args.length) {
-	console.log('Please specify at least one plugin name');
+	console.error('Please specify at least one plugin name');
 	process.exit(1);
 }
 
