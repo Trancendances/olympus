@@ -46,7 +46,7 @@ class SequelizeWrapper {
 		this.instance.sync(params).then(() => {
 			console.info('Database synchronised');
 			this.sync = true;
-			process.exit(0);
+			process.exit(0); // Exit because else Sequelize will keep the process running
 		}).catch((err) => {
 			console.error(err);
 			process.exit(1);
