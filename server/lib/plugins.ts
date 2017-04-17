@@ -68,6 +68,12 @@ export enum AccessLevel {
 	readwrite
 }
 
+export enum Role {
+	reader,
+	admin,
+	editor
+}
+
 // Plugin Connector class
 // This is the class plugins will be using to interact with the database. This
 // way, plugins won't have much knowledge of sensitive user data that doesn't
@@ -573,14 +579,6 @@ abstract class PluginInfos {
 	description?: string;
 	schema?: Object;
 	home: boolean;
-}
-
-// We don't need to export this one: the plugin doesn't need to know the user's
-// global role
-export enum Role {
-	reader,
-	admin,
-	editor
 }
 
 // Use a given Sequelize model to check if a user with a given username is admin
