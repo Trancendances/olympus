@@ -28,7 +28,7 @@ export abstract class Data extends Object {
 		}
 
 		// Check if the status is in the correct format
-		if(['draft', 'unlisted', 'published'].indexOf(data.status) < 0) {
+		if(['private', 'public'].indexOf(data.status) < 0) {
 			return false;
 		}
 
@@ -424,8 +424,4 @@ function getDataWhereOptions(options: Options): s.WhereOptions | null {
 	}
 	
 	return data;
-}
-
-function isSchemaValid(metadata: MetaData, next:(err: Error | null, valid?: boolean) => void): void {
-	
 }

@@ -55,7 +55,7 @@ module.exports.get = function(req: e.Request, res: e.Response) {
 					// If the access level is set to "none", don't return drafts
 					data = data.filter((data) => {
 						if(level === p.AccessLevel.none) {
-							if(!data.status.localeCompare('draft')) return false;
+							if(!data.status.localeCompare('private')) return false;
 							else return true;
 						}
 						return true;
