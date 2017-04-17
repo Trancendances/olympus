@@ -13,6 +13,7 @@ function handleErr(err: Error, res: e.Response): void {
 		case 'NO_ROW_UPDATED':
 		case 'METADATA_MISMATCH':
 		case 'DATA_INVALID':
+		case 'NUMBER_MISSING':
 			code = 400;
 			break;
 		case 'IS_ADMIN':
@@ -30,7 +31,7 @@ module.exports.get = function(req: e.Request, res: e.Response) {
 	// We must have at least one query parameter, which is the number of
 	// elements to return
 	if(!req.query.number) {
-		return res.sendStatus(400);
+		return handleErr(new Error('NUMBER_MISSING'), res);
 	}
 
 	// Grab a connector and load the elements number
@@ -68,7 +69,6 @@ module.exports.get = function(req: e.Request, res: e.Response) {
 
 }
 
-// TODO: Check access level
 module.exports.add = function(req: e.Request, res: e.Response) {
 	// Check if the data is valid
 	if(p.Data.isValid(req.body)) {
@@ -77,11 +77,17 @@ module.exports.add = function(req: e.Request, res: e.Response) {
 			if(err) return handleErr(err, res);
 			// Check if connector is here, cause else TS will complain at compilation
 			if(!connector) return handleErr(new Error('CONNECTOR_MISSING'), res);
-
-			// Run the query
-			return connector.addData(<p.Data>req.body, (err) => {
+			// Check the user's access level before returning the data
+			connector.getAccessLevel('brendan', (err, level) => { // TODO: Replace hard-coded username
 				if(err) return handleErr(err, res);
-				res.sendStatus(200);
+				// User can add data only if it has write access on the plugin's data
+				if(level === p.AccessLevel.readwrite) {
+					// Run the query
+					return connector.addData(<p.Data>req.body, (err) => {
+						if(err) return handleErr(err, res);
+						res.sendStatus(200);
+					});
+				}
 			});
 		});
 	} else {
@@ -90,7 +96,6 @@ module.exports.add = function(req: e.Request, res: e.Response) {
 	}
 }
 
-// TODO: Check access level
 module.exports.replace = function(req: e.Request, res: e.Response) {
 	// Check if all of the data is valid
 	if(p.Data.isValid(req.body.old) && p.Data.isValid(req.body.new)) {
@@ -98,11 +103,17 @@ module.exports.replace = function(req: e.Request, res: e.Response) {
 			if(err) return handleErr(err, res);
 			// Check if connector is here, cause else TS will complain at compilation
 			if(!connector) return handleErr(new Error('CONNECTOR_MISSING'), res);
-
-			// Run the query
-			return connector.replaceData(<p.Data>req.body.old, <p.Data>req.body.new, (err) => {
+			// Check the user's access level before returning the data
+			connector.getAccessLevel('brendan', (err, level) => { // TODO: Replace hard-coded username
 				if(err) return handleErr(err, res);
-				res.sendStatus(200);
+				// User can edit data only if it has write access on the plugin's data
+				if(level === p.AccessLevel.readwrite) {
+					// Run the query
+					return connector.replaceData(<p.Data>req.body.old, <p.Data>req.body.new, (err) => {
+						if(err) return handleErr(err, res);
+						res.sendStatus(200);
+					});
+				}
 			});
 		});
 	} else {
@@ -111,4 +122,33 @@ module.exports.replace = function(req: e.Request, res: e.Response) {
 	}
 }
 
-module.exports.delete = function(req: e.Request, res: e.Response) {}
+module.exports.delete = function(req: e.Request, res: e.Response) {
+	// We must have at least one query parameter, which is the number of
+	// elements to return
+	if(!req.query.number) {
+		return handleErr(new Error('NUMBER_MISSING'), res);
+	}
+	// Get connector
+	p.PluginConnector.getInstance(req.params.plugin, (err, connector) => {
+		if(err) return handleErr(err, res);
+		if(!connector) return handleErr(new Error('CONNECTOR_MISSING'), res);
+
+		let options: p.Options = <p.Options>{ number: parseInt(req.query.number) };
+		
+		// Load optional filters
+		if(req.query.startTimestamp) options.startTimestamp = req.query.startTimestamp;
+		if(req.query.type) options.type = req.query.type;
+		// Check the user's access level before returning the data
+		connector.getAccessLevel('brendan', (err, level) => { // TODO: Replace hard-coded username
+			if(err) return handleErr(err, res);
+			// User can delete data only if it has write access on the plugin's data
+			if(level === p.AccessLevel.readwrite) {
+				// Run the query
+				connector.deleteData(options, (err) => {
+					if(err) return handleErr(err, res);
+					res.sendStatus(200);
+				})
+			}
+		});
+	})
+}
