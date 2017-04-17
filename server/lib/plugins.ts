@@ -1,7 +1,8 @@
 import * as s from 'sequelize';
 import {SequelizeWrapper} from '../utils/sequelizeWrapper';
+import * as path from 'path';
+import * as fs from 'fs'
 
-const path				= require('path');
 const revalidator		= require('revalidator');
 const printit			= require('printit');
 const log = printit({
@@ -56,6 +57,7 @@ export abstract class Options extends Object {
 // Enumerations used in the database
 
 export enum State {
+	uninstalled, // Has been installed before but isn't anymore
 	disabled,
 	enabled
 }
@@ -137,21 +139,74 @@ export class PluginConnector {
 		}
 	}
 
-	// Move the home flag to the given plugin
-	public static setHome(pluginName: string, disableOld: boolean, next:(err: Error | null) => void) {
-		// First check if the plugin exists
-		SequelizeWrapper.getInstance().model('plugin').count(<s.CountOptions>{ 
-			where: <s.WhereOptions>{ dirname: pluginName }
-		}).then((count) => {
-			if(!count) return next(new Error('NO_PLUGIN')); // Plugin doesn't exist
-			this.removeHomeFlag(disableOld, (err) => {
-				if(err) return next(err);
-				this.setHomeFlag(pluginName, (err) => {
-					if(err) return next(err);
-					return next(null);
+	public static update(next:(err: Error | null) => void) {
+		// Define root for the plugins
+		let root = path.resolve('./plugins');
+		// Get all the plugins from the database
+		SequelizeWrapper.getInstance().model('plugin').findAll()
+		.then((plugins: s.Instance<any>[]) => {
+			let updates = plugins.map((plugin) => {
+				// Check all of the plugins in a Promise
+				return new Promise((resolve, reject) => {
+					let pluginPath = path.join(root, plugin.get('dirname'));
+					if(fs.existsSync(pluginPath)) {
+						// Else, load the plugin infos from its manifest
+						let infos = this.getPluginInfos(plugin.get('dirname'));
+						// Update the instance of the plugin
+						plugin.set({
+							description: infos.description,
+							schema: infos.schema
+						});
+						// Save the updated instance in the database
+						plugin.save().then(() => {
+							log.info('Loaded plugin', plugin.get('dirname'));
+							resolve();
+						}).catch(reject);
+					} else {
+						// If the directory doesn't exist anymore, run the state change
+						plugin.set('state', State[State.uninstalled]);
+						// Save the new state in the database
+						plugin.save().then(() => {
+							log.info('Uninstalled removed plugin', plugin.get('dirname'));
+							resolve();
+						}).catch(reject);
+					}
 				});
 			});
+			
+			return Promise.all(updates).then(() => { return next(null) }).catch(next);
 		}).catch(next);
+	}
+
+	// Get the name of the home plugin (undefined if no home plugin is set)
+	public static getHomePluginName(next:(err: Error | null, name?: string | undefined) => void) {
+		// There should be only one home plugin
+		SequelizeWrapper.getInstance().model('plugin').findOne(<s.FindOptions>{
+			where: <s.WhereOptions>{ home: true },
+		}).then((row: s.Instance<any>) => {
+			next(null, row.get('dirname'))
+		}).catch(next);
+	}
+
+	// Get data from all of the registered plugins
+	public static getPlugins(state: State | null, next:(err: Error | null, plugins: Object[]) => void) {
+		let whereOptions: s.WhereOptions = {};
+		// Filter on the state if required
+		if(state) whereOptions.state = State[state];
+		// Get all the plugins
+		SequelizeWrapper.getInstance().model('plugin').findAll({
+			where: whereOptions
+		}).then((rows: s.Instance<any>[]) => {
+			let ret = rows.map((row) => {
+				return {
+					name: row.get('name'),
+					description: row.get('description'),
+					state: State[row.get('state')],
+					home: row.get('home')
+				};
+			});
+			return next(null, ret);
+		});
 	}
 
 	// If the plugin doesn't exist, getInstance will register it in the database
@@ -222,30 +277,6 @@ export class PluginConnector {
 		if(!homePluginName) return false;
 		if(!homePluginName.localeCompare(pluginName)) return true;
 		return false;
-	}
-
-	// Removes the home flag of the current home plugin
-	private static removeHomeFlag(disableOld: boolean, next:(err: Error | null) => void) {
-		let updatedValues = {
-			home: false,
-			state: State[State.enabled] // The previous home plugin is obviously enabled
-		};
-		// If the disableOld boolean is set to true, we disable the previous home plugin
-		if(disableOld) updatedValues.state = State[State.disabled];
-		SequelizeWrapper.getInstance().model('plugin').update(updatedValues, <s.UpdateOptions>{
-			where: <s.WhereOptions>{ home: true }
-		}).then(() => { return next(null); })
-		.catch(next);
-	}
-
-	// Set home flag to given plugin
-	private static setHomeFlag(pluginName: string, next:(err: Error | null) => void) {
-		SequelizeWrapper.getInstance().model('plugin').update({
-			home: true
-		}, <s.UpdateOptions>{
-			where: <s.WhereOptions>{ dirname: pluginName }
-		}).then(() => { return next(null); })
-		.catch(next);
 	}
 
 	// PUBLIC
@@ -406,7 +437,7 @@ export class PluginConnector {
 			if(err) return next(err);
 			// If the user is admin on the platform, it gives it read/write
 			// access to all plugins, so we can't change it
-			if(admin) return next(new Error('IS_ADMIN'));
+			if(admin) return next(new Error('NOT_ADMIN'));
 			// If the user isn't admin, we check if there's an access level to
 			// add or update
 			this.model.access.count(<s.CountOptions>{
@@ -455,8 +486,48 @@ export class PluginConnector {
 		});
 	}
 
+	// Move the home flag to the given plugin
+	public setHome(disableOld: boolean, next:(err: Error | null) => void) {
+		// First check if the plugin exists
+		SequelizeWrapper.getInstance().model('plugin').count(<s.CountOptions>{ 
+			where: <s.WhereOptions>{ dirname: this.pluginName }
+		}).then((count) => {
+			if(!count) return next(new Error('NO_PLUGIN')); // Plugin doesn't exist
+			this.removeHomeFlag(disableOld, (err) => {
+				if(err) return next(err);
+				this.setHomeFlag(this.pluginName, (err) => {
+					if(err) return next(err);
+					return next(null);
+				});
+			});
+		}).catch(next);
+	}
+
 	// PRIVATE
 
+	// Removes the home flag of the current home plugin
+	private removeHomeFlag(disableOld: boolean, next:(err: Error | null) => void) {
+		let updatedValues = {
+			home: false,
+			state: State[State.enabled] // The previous home plugin is obviously enabled
+		};
+		// If the disableOld boolean is set to true, we disable the previous home plugin
+		if(disableOld) updatedValues.state = State[State.disabled];
+		SequelizeWrapper.getInstance().model('plugin').update(updatedValues, <s.UpdateOptions>{
+			where: <s.WhereOptions>{ home: true }
+		}).then(() => { return next(null); })
+		.catch(next);
+	}
+	
+	// Set home flag to given plugin
+	private setHomeFlag(pluginName: string, next:(err: Error | null) => void) {
+		SequelizeWrapper.getInstance().model('plugin').update({
+			home: true
+		}, <s.UpdateOptions>{
+			where: <s.WhereOptions>{ dirname: pluginName }
+		}).then(() => { return next(null); })
+		.catch(next);
+	}
 
 	// Check if the provided metadata is valid agains the plugin schema
 	private isSchemaValid(data: Data, next:(err: Error | null, valid?: boolean) => void) {
@@ -502,7 +573,7 @@ abstract class PluginInfos {
 
 // We don't need to export this one: the plugin doesn't need to know the user's
 // global role
-enum Role {
+export enum Role {
 	reader,
 	admin,
 	editor
