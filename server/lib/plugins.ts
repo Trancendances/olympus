@@ -2,7 +2,7 @@ import * as s from 'sequelize';
 
 const path				= require('path');
 const revalidator		= require('revalidator');
-const sequelizeWrapper	= require('../utils/sequelizeWrapper');
+import {SequelizeWrapper} from '../utils/sequelizeWrapper';
 
 // Data models for plugin's data and metadata
 
@@ -81,10 +81,10 @@ export class PluginConnector {
 	// Set the plugin name and load the necessery models
 	private constructor(private readonly pluginName: string) {
 		this.model = {
-			access: sequelizeWrapper.getInstance().model('plugin_access'),
-			data: sequelizeWrapper.getInstance().model('plugin_data'),
-			plugin: sequelizeWrapper.getInstance().model('plugin'),
-			user: sequelizeWrapper.getInstance().model('user')
+			access: SequelizeWrapper.getInstance().model('plugin_access'),
+			data: SequelizeWrapper.getInstance().model('plugin_data'),
+			plugin: SequelizeWrapper.getInstance().model('plugin'),
+			user: SequelizeWrapper.getInstance().model('user')
 		}
 	}
 
@@ -96,7 +96,7 @@ export class PluginConnector {
 			this.instances = {}; // Initialisation to empty object
 		}
 		if(!this.instances[pluginName]) {
-			sequelizeWrapper.getInstance().model('plugin').count(<s.CountOptions>{ 
+			SequelizeWrapper.getInstance().model('plugin').count(<s.CountOptions>{ 
 				where: <s.WhereOptions>{ dirname: pluginName }
 			}).then((count) => {
 				this.instances[pluginName] = new PluginConnector(pluginName);
@@ -116,21 +116,23 @@ export class PluginConnector {
 
 	// If the plugin doesn't exist, getInstance will register it in the database
 	private static register(pluginName: string, next:(err: Error | null) => void) {
-		let pluginsRoot: string = path.resolve('./build/plugins'); // Build root
-		let confPath: string = path.join(pluginsRoot, pluginName, 'package.json');
-		try { // Check if package.json exists
-			let conf = require(confPath);
-			// Load the name, description and the metadata schema if exist
-			let name = conf.displayedName || pluginName;
-			let description = conf.description || null;
-			let schema = conf.schema || null;
-			
+		try {
+			let infos: PluginInfos = this.getPluginInfos(pluginName);
+			let schema;
+			// Check if schema is defined
+			if(infos.schema) {
+				// If it is, format it so revalidator can use it
+				schema = { properties: infos.schema };
+			} else {
+				// Else, set it to null
+				schema = null;
+			}
 			// We don't need to count the rows, as getInstance already does it before
-			sequelizeWrapper.getInstance().model('plugin').create(<s.CreateOptions>{
+			SequelizeWrapper.getInstance().model('plugin').create({
 				dirname: pluginName,
-				name: name,
-				description: description,
-				schema: { properties: schema },
+				name: infos.name,
+				description: infos.description || null,
+				schema: schema,
 				state: State[State.disabled]
 			}).then(() => { return next(null); })
 			.catch(next);
@@ -346,7 +348,54 @@ export class PluginConnector {
 		});
 	}
 
+	// Updates schema of a given plugin based on the info in its manifest
+	public static updateSchema(pluginName: string, next: (err: Error | null) => void): void {
+		try {
+			// Get plugin info from its manifest
+			let infos: PluginInfos = this.getPluginInfos(pluginName);
+			// Update the schema
+			SequelizeWrapper.getInstance().model('plugin').update({
+				schema: infos.schema
+			}, <s.UpdateOptions>{
+				where: <s.WhereOptions>{ dirname: pluginName }
+			}).then(() => { return next(null); })
+			.catch(next);
+		} catch(e) {
+			// We may get an error when trying to open a non-existing manifest
+			next(e);
+		}
+	}
+
 	// PRIVATE
+
+	// Get plugin infos from its package.json manifest
+	private static getPluginInfos(pluginName: string): PluginInfos {
+		let pluginsRoot: string = path.resolve('./build/plugins'); // Build root
+		let confPath: string = path.join(pluginsRoot, pluginName, 'package.json');
+		try { // Check if package.json exists
+			let conf = require(confPath);
+			// Load the name, description and the metadata schema if exist
+			let name = conf.displayedName || pluginName;
+			let description = conf.description || null;
+			let schema;
+			// Check if schema is defined
+			if(conf.schema) {
+				// If it is, format it so revalidator can use it
+				schema = { properties: conf.schema };
+			} else {
+				// Else, set it to null
+				schema = null;
+			}
+			// Return it as a PluginInfos instance
+			return <PluginInfos>{
+				name: name,
+				description: description,
+				schema: schema
+			}
+		} catch(e) {
+			throw e;
+		}
+	}
 
 	// Check if the provided metadata is valid agains the plugin schema
 	private isSchemaValid(data: Data, next:(err: Error | null, valid?: boolean) => void) {
@@ -379,6 +428,14 @@ export class PluginConnector {
 			}
 		}).catch(next);
 	}
+}
+
+// INTERNAL
+
+abstract class PluginInfos {
+	name: string;
+	description?: string;
+	schema?: Object;
 }
 
 // We don't need to export this one: the plugin doesn't need to know the user's
