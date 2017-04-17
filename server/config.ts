@@ -32,7 +32,7 @@ var config = {
 var plugins = fs.readdirSync(root).filter(file => fs.statSync(path.join(root, file)).isDirectory());
 
 // Add plugin's public directories as static routes
-for(plugin of plugins) {
+for(let plugin of plugins) {
     // Get (unused) instance of the connector so the plugin gets registered if
     // it wasn't before
     pluginConnector.getInstance(plugin, (err) => {
@@ -44,7 +44,7 @@ for(plugin of plugins) {
     if(fs.existsSync(pluginPublicPath)) {
         // Create a static route for the plugin
         config.common.use.push([
-            '/' + pluginSlug,
+            '/' + plugin,
             americano.static(pluginPublicPath, {
                 maxAge: 86400000
             })
