@@ -1,6 +1,5 @@
 import {SyncOptions} from 'sequelize';
-
-const wrapper = require('../utils/sequelizeWrapper');
+import {SequelizeWrapper} from '../utils/sequelizeWrapper';
 
 const options = {
 	'--force': {
@@ -22,5 +21,5 @@ for(let i in args) {
 	syncOptions[options[arg].key] = options[arg].value;
 }
 
-wrapper.getInstance(); // Create an instance
-wrapper.syncModels(syncOptions);
+SequelizeWrapper.getInstance(); // Create an instance
+SequelizeWrapper.syncModels(syncOptions);

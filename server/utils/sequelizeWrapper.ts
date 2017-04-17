@@ -10,11 +10,11 @@ const config = require(path.resolve('.') + '/settings').database;
 const Sequelize: s.SequelizeStatic	= require('sequelize');
 
 // Wrapper to singleton-ise Sequelize
-class SequelizeWrapper {
+export class SequelizeWrapper {
 	private static instance: s.Sequelize;
 	private static sync: boolean = false;
 
-	public static getInstance() {
+	public static getInstance(): s.Sequelize {
 		if(!this.instance) {
 			let instance: s.Sequelize = new Sequelize(config.database, config.user, config.password, <s.Options>{
 				host: config.host,
@@ -53,9 +53,7 @@ class SequelizeWrapper {
 		});
 	}
 	
-	public static isSync() {
+	public static isSync(): boolean {
 		return this.sync;
 	}
 }
-
-module.exports = SequelizeWrapper;
