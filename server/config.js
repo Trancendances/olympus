@@ -1,6 +1,7 @@
-var americano   = require('americano'),
-    fs          = require('fs'),
-    path        = require('path');
+var americano       = require('americano'),
+    fs              = require('fs'),
+    path            = require('path'),
+    pluginConnector = require('./lib/plugins').PluginConnector;
 
 var root = path.resolve('./plugins');
 
@@ -33,6 +34,11 @@ var plugins = fs.readdirSync(root).filter(file => fs.statSync(path.join(root, fi
 // Add plugin's public directories as static routes
 // TODO: Check if [plugin]/public exists
 for(plugin of plugins) {
+    // Get (unused) instance of the connector so the plugin gets registered if
+    // it wasn't before
+    pluginConnector.getInstance(plugin, (err) => {
+        if(err) return console.error(err);
+    });
     let pluginPublicPath = path.join(root, plugin, 'public');
     let pluginSlug = require(path.join(root, plugin, 'package.json')).name;
     
