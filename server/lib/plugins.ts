@@ -288,14 +288,14 @@ export class PluginConnector {
 			// for the plugin
 			if(count) return next(new Error('TIMESTAMP_EXISTS'));
 			// Now check if the "meta" object respects the plugin schema if exists
-			this.isSchemaValid(data, (err, valid) => {
+			return this.isSchemaValid(data, (err, valid) => {
 				if(err) return next(err);
 				if(valid) {
 					// Create the database entry
 					this.model.data.create(<s.CreateOptions>{
 						plugin: this.pluginName,
 						data: data
-					}).then(() => { next(null) }) // No result
+					}).then(() => { return next(null) }) // No result
 					.catch(next); // If there's an error, catch it and send it
 				} else {
 					return next(new Error('METADATA_MISMATCH'))
@@ -326,8 +326,8 @@ export class PluginConnector {
 				}).then((result) => {
 					// If no row were updated, it means we got the original data wrong
 					// so raise an error
-					if(!result[0]) next(new Error('NO_ROW_UPDATED'));
-					else next(null);
+					if(!result[0]) return next(new Error('NO_ROW_UPDATED'));
+					else return next(null);
 				}).catch(next);
 			} else {
 				return next(new Error('METADATA_MISMATCH'))
@@ -349,7 +349,7 @@ export class PluginConnector {
 
 		this.model.data.destroy(<s.DestroyOptions>{
 			where: whereOptions
-		}).then(() => { next(null); })
+		}).then(() => { return next(null); })
 		.catch(next);
 	}
 
@@ -359,7 +359,7 @@ export class PluginConnector {
 			state: State[newState] // Get the string from the given state
 		}, <s.UpdateOptions>{
 			where: <s.WhereOptions>{ dirname: this.pluginName }
-		}).then(() => { next(null) })
+		}).then(() => { return next(null) })
 		.catch(next);
 	}
 
@@ -367,7 +367,7 @@ export class PluginConnector {
 	public getState(next: (err: Error | null, state?: State) => void) {
 		// The plugin's dirname is it's primary key
 		this.model.plugin.findById(this.pluginName)
-		.then((row) => { next(null, State[<string>row.get('state')]); })
+		.then((row) => { return next(null, State[<string>row.get('state')]); })
 		.catch(next); // If there's an error, catch it and send it
 	}
 	
@@ -389,8 +389,8 @@ export class PluginConnector {
 				// Casting the level as a string, because else TypeScript
 				// assumes it to be an integer, and the whole thing to 
 				// return a string
-				if(row) next(null, AccessLevel[<string>row.get('level')]);
-				else next(null, AccessLevel.none);
+				if(row) return next(null, AccessLevel[<string>row.get('level')]);
+				else return next(null, AccessLevel.none);
 			}).catch(next);
 		})
 	}
@@ -415,11 +415,11 @@ export class PluginConnector {
 				if(!count) {
 					// If the access level is "none", don't create a row
 					if(level === AccessLevel.none) next(null)
-					this.model.access.create(<s.CreateOptions>{
+					return this.model.access.create(<s.CreateOptions>{
 						plugin: this.pluginName,
 						user: username,
 						level: AccessLevel[level]
-					}).then(() => { next(null) })
+					}).then(() => { return next(null) })
 					.catch(next);
 				} else {
 					// A row already exists, we update it or delete it.
@@ -431,7 +431,7 @@ export class PluginConnector {
 								plugin: this.pluginName,
 								user: username
 							}
-						}).then(() => { next(null); })
+						}).then(() => { return next(null); })
 						.catch(next);
 					} else {
 						// If the access level isn't "none", just update the row
@@ -442,7 +442,7 @@ export class PluginConnector {
 								plugin: this.pluginName,
 								user: username
 							}
-						}).then(() => { next(null); })
+						}).then(() => { return next(null); })
 						.catch(next);
 					}
 				}
