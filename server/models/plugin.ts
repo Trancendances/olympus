@@ -15,5 +15,9 @@ module.exports = <sequelize.DefineAttributes>{
 	state: <sequelize.DefineAttributeColumnOptions>{
 		type: sequelize.ENUM('uninstalled', 'disabled', 'enabled'),
 		allowNull: false
+	},
+	home: <sequelize.DefineAttributeColumnOptions>{
+		type: sequelize.BOOLEAN,
+		allowNull: false
 	}
 }

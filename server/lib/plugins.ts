@@ -114,6 +114,41 @@ export class PluginConnector {
 		}
 	}
 
+	// Updates schema of a given plugin based on the info in its manifest
+	public static updateSchema(pluginName: string, next: (err: Error | null) => void): void {
+		try {
+			// Get plugin info from its manifest
+			let infos: PluginInfos = this.getPluginInfos(pluginName);
+			// Update the schema
+			SequelizeWrapper.getInstance().model('plugin').update({
+				schema: infos.schema
+			}, <s.UpdateOptions>{
+				where: <s.WhereOptions>{ dirname: pluginName }
+			}).then(() => { return next(null); })
+			.catch(next);
+		} catch(e) {
+			// We may get an error when trying to open a non-existing manifest
+			next(e);
+		}
+	}
+
+	// Move the home flag to the given plugin
+	public static setHome(pluginName: string, next:(err: Error | null) => void) {
+		// First check if the plugin exists
+		SequelizeWrapper.getInstance().model('plugin').count(<s.CountOptions>{ 
+			where: <s.WhereOptions>{ dirname: pluginName }
+		}).then((count) => {
+			if(!count) return next(new Error('NO_PLUGIN')); // Plugin doesn't exist
+			this.removeHomeFlag((err) => {
+				if(err) return next(err);
+				this.setHomeFlag(pluginName, (err) => {
+					if(err) return next(err);
+					return next(null);
+				});
+			});
+		}).catch(next);
+	}
+
 	// If the plugin doesn't exist, getInstance will register it in the database
 	private static register(pluginName: string, next:(err: Error | null) => void) {
 		try {
@@ -133,12 +168,71 @@ export class PluginConnector {
 				name: infos.name,
 				description: infos.description || null,
 				schema: schema,
-				state: State[State.disabled]
+				state: State[State.disabled],
+				home: this.isHome(pluginName)
 			}).then(() => { return next(null); })
 			.catch(next);
 		} catch(e) {
 			return next(e);
 		}
+	}
+
+	// Get plugin infos from its package.json manifest
+	private static getPluginInfos(pluginName: string): PluginInfos {
+		let pluginsRoot: string = path.resolve('./plugins'); // Plugins root
+		let confPath: string = path.join(pluginsRoot, pluginName, 'package.json');
+		try { // Check if package.json exists
+			let conf = require(confPath);
+			// Load the name, description and the metadata schema if exist
+			let name = conf.displayedName || pluginName;
+			let description = conf.description || null;
+			let schema;
+			// Check if schema is defined
+			if(conf.schema) {
+				// If it is, format it so revalidator can use it
+				schema = { properties: conf.schema };
+			} else {
+				// Else, set it to null
+				schema = null;
+			}
+			// Return it as a PluginInfos instance
+			return <PluginInfos>{
+				name: name,
+				description: description,
+				schema: schema,
+				home: this.isHome(pluginName)
+			}
+		} catch(e) {
+			throw e;
+		}
+	}
+	
+	// Check whether the plugin is defined as the home plugin in the app manifest
+	private static isHome(pluginName: string): boolean {
+		let homePluginName: string = path.resolve('./settings').home;
+		if(!homePluginName) return false;
+		if(!homePluginName.localeCompare(pluginName)) return true;
+		return false;
+	}
+
+	// Removes the home flag of the current home plugin
+	private static removeHomeFlag(next:(err: Error | null) => void) {
+		SequelizeWrapper.getInstance().model('plugin').update({
+			home: false
+		}, <s.UpdateOptions>{
+			where: <s.WhereOptions>{ home: true }
+		}).then(() => { return next(null); })
+		.catch(next);
+	}
+
+	// Set home flag to given plugin
+	private static setHomeFlag(pluginName: string, next:(err: Error | null) => void) {
+		SequelizeWrapper.getInstance().model('plugin').update({
+			home: true
+		}, <s.UpdateOptions>{
+			where: <s.WhereOptions>{ dirname: pluginName }
+		}).then(() => { return next(null); })
+		.catch(next);
 	}
 
 	// PUBLIC
@@ -348,54 +442,8 @@ export class PluginConnector {
 		});
 	}
 
-	// Updates schema of a given plugin based on the info in its manifest
-	public static updateSchema(pluginName: string, next: (err: Error | null) => void): void {
-		try {
-			// Get plugin info from its manifest
-			let infos: PluginInfos = this.getPluginInfos(pluginName);
-			// Update the schema
-			SequelizeWrapper.getInstance().model('plugin').update({
-				schema: infos.schema
-			}, <s.UpdateOptions>{
-				where: <s.WhereOptions>{ dirname: pluginName }
-			}).then(() => { return next(null); })
-			.catch(next);
-		} catch(e) {
-			// We may get an error when trying to open a non-existing manifest
-			next(e);
-		}
-	}
-
 	// PRIVATE
 
-	// Get plugin infos from its package.json manifest
-	private static getPluginInfos(pluginName: string): PluginInfos {
-		let pluginsRoot: string = path.resolve('./plugins'); // Plugins root
-		let confPath: string = path.join(pluginsRoot, pluginName, 'package.json');
-		try { // Check if package.json exists
-			let conf = require(confPath);
-			// Load the name, description and the metadata schema if exist
-			let name = conf.displayedName || pluginName;
-			let description = conf.description || null;
-			let schema;
-			// Check if schema is defined
-			if(conf.schema) {
-				// If it is, format it so revalidator can use it
-				schema = { properties: conf.schema };
-			} else {
-				// Else, set it to null
-				schema = null;
-			}
-			// Return it as a PluginInfos instance
-			return <PluginInfos>{
-				name: name,
-				description: description,
-				schema: schema
-			}
-		} catch(e) {
-			throw e;
-		}
-	}
 
 	// Check if the provided metadata is valid agains the plugin schema
 	private isSchemaValid(data: Data, next:(err: Error | null, valid?: boolean) => void) {
@@ -436,6 +484,7 @@ abstract class PluginInfos {
 	name: string;
 	description?: string;
 	schema?: Object;
+	home: boolean;
 }
 
 // We don't need to export this one: the plugin doesn't need to know the user's
