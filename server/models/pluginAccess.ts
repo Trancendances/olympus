@@ -8,6 +8,7 @@ module.exports = <sequelize.DefineAttributes>{
 			model: 'plugin',
 			key: 'dirname'
 		},
+		onUpdate: 'CASCADE',
 		allowNull: false
 	},
 	user: <sequelize.DefineAttributeColumnOptions>{
@@ -17,6 +18,8 @@ module.exports = <sequelize.DefineAttributes>{
 			model: 'user',
 			key: 'username'
 		},
+		onUpdate: 'CASCADE',
+		onDelete: 'CASCADE',
 		allowNull: false
 	},
 	level: <sequelize.DefineAttributeColumnOptions>{

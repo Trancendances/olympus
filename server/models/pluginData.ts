@@ -8,7 +8,7 @@ module.exports = <sequelize.DefineAttributes>{
 			model: 'plugin',
 			key: 'dirname'
 		},
-		allowNull: false
+		onUpdate: 'CASCADE'
 	},
 	data: <sequelize.DefineAttributeColumnOptions>{
 		type: sequelize.JSONB,
