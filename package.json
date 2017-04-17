@@ -26,7 +26,7 @@
   },
   "scripts": {
     "watch": "tsc -p server -w",
-    "build": "tsc -p server && cp -R plugins build",
+    "build": "tsc -p server",
     "sync": "node ./build/server/scripts/syncdb.js",
     "sync:force": "node ./build/server/scripts/syncdb.js --force",
     "schema:update": "node ./build/server/scripts/updateschema.js"
