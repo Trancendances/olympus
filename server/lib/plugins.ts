@@ -138,13 +138,13 @@ export class PluginConnector {
 	}
 
 	// Move the home flag to the given plugin
-	public static setHome(pluginName: string, next:(err: Error | null) => void) {
+	public static setHome(pluginName: string, disableOld: boolean, next:(err: Error | null) => void) {
 		// First check if the plugin exists
 		SequelizeWrapper.getInstance().model('plugin').count(<s.CountOptions>{ 
 			where: <s.WhereOptions>{ dirname: pluginName }
 		}).then((count) => {
 			if(!count) return next(new Error('NO_PLUGIN')); // Plugin doesn't exist
-			this.removeHomeFlag((err) => {
+			this.removeHomeFlag(disableOld, (err) => {
 				if(err) return next(err);
 				this.setHomeFlag(pluginName, (err) => {
 					if(err) return next(err);
@@ -160,19 +160,21 @@ export class PluginConnector {
 			let infos: PluginInfos = this.getPluginInfos(pluginName);
 			let schema;
 			// Check if schema is defined
-			if(infos.schema) {
-				schema = infos.schema;
-			} else {
-				// Else, set it to null
-				schema = null;
-			}
+			if(infos.schema) schema = infos.schema;
+			else schema = null; // Else, set it to null
+
+			let state: State;
+			// If the plugin is the home plugin, it must be enabled by default
+			if(this.isHome(pluginName)) state = State.enabled;
+			else state = State.disabled // Else, set it to disabled
+
 			// We don't need to count the rows, as getInstance already does it before
 			SequelizeWrapper.getInstance().model('plugin').create({
 				dirname: pluginName,
 				name: infos.name,
 				description: infos.description || null,
 				schema: schema,
-				state: State[State.disabled],
+				state: State[state],
 				home: this.isHome(pluginName)
 			}).then(() => {
 				log.info('Registered new plugin', pluginName);
@@ -223,10 +225,14 @@ export class PluginConnector {
 	}
 
 	// Removes the home flag of the current home plugin
-	private static removeHomeFlag(next:(err: Error | null) => void) {
-		SequelizeWrapper.getInstance().model('plugin').update({
-			home: false
-		}, <s.UpdateOptions>{
+	private static removeHomeFlag(disableOld: boolean, next:(err: Error | null) => void) {
+		let updatedValues = {
+			home: false,
+			state: State[State.enabled] // The previous home plugin is obviously enabled
+		};
+		// If the disableOld boolean is set to true, we disable the previous home plugin
+		if(disableOld) updatedValues.state = State[State.disabled];
+		SequelizeWrapper.getInstance().model('plugin').update(updatedValues, <s.UpdateOptions>{
 			where: <s.WhereOptions>{ home: true }
 		}).then(() => { return next(null); })
 		.catch(next);
