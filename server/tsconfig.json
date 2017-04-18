@@ -8,9 +8,10 @@
         "allowJs": true,
         "strictNullChecks": true,
         "types": [
+            "express",
             "node",
-            "sequelize",
-            "express"
+            "passport",
+            "sequelize"
         ]
     },
     "compileOnSave": false
