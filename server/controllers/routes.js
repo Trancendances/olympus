@@ -1,8 +1,18 @@
 const data      = require('./pluginData');
 const plugin    = require('./plugin');
 const admin     = require('./admin');
+const user      = require('./user');
 
 module.exports = {
+    'auth': {
+        post: user.auth
+    },
+    'auth/:user': {
+        get: user.get,
+        post: user.add,
+        put: user.update,
+        delete: user.delete
+    },
     'api/plugins': {
         get: plugin.getList
     },

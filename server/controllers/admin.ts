@@ -79,6 +79,10 @@ module.exports.setAccessLevel = function(req: e.Request, res: e.Response) {
 	});
 }
 
+module.exports.useradd = function(req: e.Request, res: e.Response) {}
+
+module.exports.userdel = function(req: e.Request, res: e.Response) {}
+
 // Check if a given user has the admin role
 export function isAdmin(username: string, next:(err: Error | null, admin?: boolean) => void) {
 	let wrapper = SequelizeWrapper.getInstance();
