@@ -33,8 +33,6 @@ export class SequelizeWrapper {
 			instance.define('plugin_data', require('../models/pluginData'), { freezeTableName: true });
 			instance.define('plugin_access', require('../models/pluginAccess'), { freezeTableName: true });
 			
-			// Create the tables if they don't already exist
-			
 			this.instance = instance;
 		}
 
