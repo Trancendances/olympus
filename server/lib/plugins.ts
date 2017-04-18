@@ -8,7 +8,14 @@ const printit			= require('printit');
 const log = printit({
 	date: true,
 	prefix: 'PluginConnector'
-})
+});
+
+// Some names are reserved to olympus core features,
+// so it's illegal to register a plugin with one of these names
+const illegals = [
+	'api',
+	'auth'
+];
 
 // Data models for plugin's data and metadata
 
@@ -248,7 +255,12 @@ export class PluginConnector {
 	// If the plugin doesn't exist, getInstance will register it in the database
 	private static register(pluginName: string, next:(err: Error | null) => void) {
 		try {
-			let infos: PluginInfos = this.getPluginInfos(pluginName);
+			// Check if we can register the plugin with its current name
+			if(illegals.indexOf(pluginName) >= 0) {
+				return next(new Error('ILLEGAL_NAME: ' + pluginName));
+			}
+
+			let infos: PluginInfos = this.getPluginInfos(pluginName);			
 			let schema;
 			// Check if schema is defined
 			if(infos.schema) schema = infos.schema;
