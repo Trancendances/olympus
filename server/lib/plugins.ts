@@ -158,15 +158,44 @@ export class PluginConnector {
 					if(fs.existsSync(pluginPath)) {
 						// Else, load the plugin infos from its manifest
 						let infos = this.getPluginInfos(plugin.get('dirname'));
-						// Update the instance of the plugin
-						plugin.set({
+						let newSet = {
 							description: infos.description,
-							schema: infos.schema
-						});
+							schema: infos.schema,
+							state: plugin.get('state'),
+						};
+						// If the plugin was flagged as uninstalled but its folder
+						// is back in the /plugins directory, register it back but
+						// as disabled
+						if(State[<string>plugin.get('state')] === State.uninstalled) {
+							log.info('Re-registered previously uninstalled plugin', plugin.get('dirname'));
+							// Enable it if set as home plugin
+							if(plugin.get('home')) newSet.state = State[State.enabled];
+							else newSet.state = State[State.disabled];
+						}
+						// Update the instance of the plugin
+						plugin.set(newSet);
 						// Save the updated instance in the database
 						plugin.save().then(() => {
-							log.info('Loaded plugin', plugin.get('dirname'));
-							resolve();
+							log.info('Detected plugin', plugin.get('dirname'));
+							// Home has changed in the settings file
+							if(plugin.get('home') && !this.isHome(plugin.get('dirname'))) {
+								// Get the new home plugin's name
+								let newHomePlugin = require(path.resolve('./settings')).home;
+								// Get a connector on the new home plugin
+								PluginConnector.getInstance(newHomePlugin, (err, instance) => {
+									if(err) return reject(err);
+									if(!instance) return next(new Error('CONNECTOR_MISSING'));
+									// Set new home plugin as new home
+									instance.setHome(false, (err) => {
+										if(err) return reject(err);
+										resolve();
+									});
+								});
+								return null;
+							} else {
+								resolve();
+								return null;
+							}
 						}).catch(reject);
 					} else {
 						// If the directory doesn't exist anymore, run the state change
@@ -180,7 +209,8 @@ export class PluginConnector {
 				});
 			});
 			
-			return Promise.all(updates).then(() => { return next(null) }).catch(next);
+			Promise.all(updates).then(() => { return next(null) }).catch(next);
+			return null;
 		}).catch(next);
 	}
 
@@ -236,11 +266,26 @@ export class PluginConnector {
 				description: infos.description || null,
 				schema: schema,
 				state: State[state],
-				home: this.isHome(pluginName)
+				home: false
 			}).then(() => {
 				log.info('Registered new plugin', pluginName);
-				next(null);
-				return null;
+				if(this.isHome(pluginName)) {
+					// If the new plugin is set as home in the settings file,
+					// set is as such in the database
+					PluginConnector.getInstance(pluginName, (err, instance) => {
+						if(err) return next(err);
+						if(!instance) return next(new Error('CONNECTOR_MISSING'));
+						instance.setHome(false, (err) => {
+							if(err) return next(err);
+							next(null);
+							return null;
+						});
+					});
+					return null;
+				} else {
+					next(null);
+					return null;
+				}
 			})
 			.catch(next);
 		} catch(e) {
@@ -477,7 +522,10 @@ export class PluginConnector {
 								plugin: this.pluginName,
 								user: username
 							}
-						}).then(() => { return next(null); })
+						}).then(() => {
+							next(null);
+							return null;
+						})
 						.catch(next);
 					} else {
 						// If the access level isn't "none", just update the row
@@ -488,10 +536,14 @@ export class PluginConnector {
 								plugin: this.pluginName,
 								user: username
 							}
-						}).then(() => { return next(null); })
+						}).then(() => {
+							next(null);
+							return null
+						})
 						.catch(next);
 					}
 				}
+				return null;
 			});
 		});
 	}
@@ -507,9 +559,11 @@ export class PluginConnector {
 				if(err) return next(err);
 				this.setHomeFlag(this.pluginName, (err) => {
 					if(err) return next(err);
+					log.info('Set', this.pluginName, 'as the new home plugin');
 					return next(null);
 				});
 			});
+			return null;
 		}).catch(next);
 	}
 
@@ -525,14 +579,17 @@ export class PluginConnector {
 		if(disableOld) updatedValues.state = State[State.disabled];
 		SequelizeWrapper.getInstance().model('plugin').update(updatedValues, <s.UpdateOptions>{
 			where: <s.WhereOptions>{ home: true }
-		}).then(() => { return next(null); })
-		.catch(next);
+		}).then(() => {
+			next(null);
+			return null;
+		}).catch(next);
 	}
 	
 	// Set home flag to given plugin
 	private setHomeFlag(pluginName: string, next:(err: Error | null) => void) {
 		SequelizeWrapper.getInstance().model('plugin').update({
-			home: true
+			home: true,
+			state: State[State.enabled] // Enable the new home plugin
 		}, <s.UpdateOptions>{
 			where: <s.WhereOptions>{ dirname: pluginName }
 		}).then(() => { return next(null); })
@@ -588,9 +645,7 @@ function isAdmin(username: string, model: s.Model<any,any>, next:(err: Error | n
 		// If no user, well, no admin
 		if(!row) return next(null, false);
 		// Compare the role with the one we have in the Role enum
-		if(row.get('role') === Role[Role.admin]) return next(null, true);
-		// If it doesn't match, no admin
-		return next(null, false);
+		return next(null, row.get('role').localeCompare(Role[Role.admin]) === 0);
 	}).catch(next); // Error handling
 }
 
