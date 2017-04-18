@@ -9,7 +9,8 @@ var root = path.resolve('./plugins');
 var config = {
     common: {
         use: [
-            americano.bodyParser(),
+            americano.bodyParser.urlencoded({ extended: false }),
+            americano.bodyParser.json(),            
             americano.methodOverride(),
             americano.static(__dirname + '/../../client/public', {
                 maxAge: 86400000
