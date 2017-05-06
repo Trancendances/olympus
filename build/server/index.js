@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const Hapi = require("hapi");
+const routesLoader_1 = require("./utils/routesLoader");
 const pkg = require('../../package.json');
 const log = require('printit')({
     date: true,
@@ -55,7 +56,7 @@ server.register([
         }
     });
     // Load the routes from the main router
-    //loader.loadRoutes(server);
+    routesLoader_1.loadRoutes(server);
 });
 // Start the server
 server.start((err) => {

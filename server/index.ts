@@ -1,5 +1,7 @@
 import * as Hapi from 'hapi';
 
+import {loadRoutes} from './utils/routesLoader';
+
 const pkg = require('../../package.json');
 const log = require('printit')({
 	date: true,
@@ -61,7 +63,7 @@ server.register([
 	});
 
 	// Load the routes from the main router
-	//loader.loadRoutes(server);
+	loadRoutes(server);
 });
 
 // Start the server
