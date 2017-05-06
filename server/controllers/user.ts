@@ -7,7 +7,17 @@ import {handleErr} from '../utils/handleErrors';
 
 const username = 'brendan'; // TEMPORARY
 
-module.exports.auth = function(req: e.Request, res: e.Response) {}
+module.exports.auth = function(req: e.Request, res: e.Response) {
+	// Authenticate the user with passport
+	p.authenticate('local', (err, user, info) => {
+		if(err) return handleErr(err, res)
+		if(!user) return res.sendStatus(401):
+		req.logIn(user, (err) => {
+			if(err) return handleErr(err, res)
+			return res.send(user);
+		});
+	})(req, res);
+}
 
 module.exports.get = function(req: e.Request, res: e.Response) {}
 

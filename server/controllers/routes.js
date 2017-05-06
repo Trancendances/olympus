@@ -3,6 +3,8 @@ const plugin    = require('./plugin');
 const admin     = require('./admin');
 const user      = require('./user');
 
+const passport  = require('passport');
+
 module.exports = {
     'auth': {
         post: user.auth

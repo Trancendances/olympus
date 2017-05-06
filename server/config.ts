@@ -1,4 +1,6 @@
 import * as p from './lib/plugins';
+import * as passport from 'passport';
+import {passportConfig} from './utils/passportConfig'
 
 var americano       = require('americano'),
     fs              = require('fs'),
@@ -9,6 +11,7 @@ var root = path.resolve('./plugins');
 var config = {
     common: {
         use: [
+            passport.initialize(),
             americano.bodyParser.urlencoded({ extended: false }),
             americano.bodyParser.json(),            
             americano.methodOverride(),
@@ -30,6 +33,9 @@ var config = {
         americano.logger('short')
     ]
 };
+
+// Configure passport
+passportConfig();
 
 // Check and update plugins currently stored in the database
 p.PluginConnector.update((err) => {
