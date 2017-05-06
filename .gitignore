@@ -41,3 +41,6 @@ settings.json
 
 # Occasionnal test files
 test*
+
+# Plugin directory
+plugins

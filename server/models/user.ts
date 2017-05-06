@@ -6,6 +6,10 @@ module.exports = <sequelize.DefineAttributes>{
 		primaryKey: true,
 		allowNull: false
 	},
+	email: <sequelize.DefineAttributeColumnOptions>{
+		type: sequelize.TEXT,
+		allowNull: false
+	},
 	displayedname: <sequelize.DefineAttributeColumnOptions>{
 		type: sequelize.TEXT,
 		allowNull: false
