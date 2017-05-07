@@ -12,6 +12,9 @@ function handleErr(err, res) {
         case 'NUMBER_MISSING':
             code = 400;
             break;
+        case 'UNAUTHORISED':
+            code = 401;
+            break;
         case 'NOT_ADMIN':
         case 'PLUGIN_DISABLED':
             code = 403;

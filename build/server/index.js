@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const Hapi = require("hapi");
 const routesLoader_1 = require("./utils/routesLoader");
+const pluginsLoader_1 = require("./utils/pluginsLoader");
 const pkg = require('../../package.json');
 const log = require('printit')({
     date: true,
@@ -28,17 +29,15 @@ const server = new Hapi.Server({
 server.connection({ port: port, host: host });
 server.register([
     require('inert'),
+    require('vision'),
     {
         register: require('hapi-swagger'),
-        options: {
-            info: {
+        options: { info: {
                 'title': pkg.name,
                 'description': pkg.description,
                 'version': pkg.version,
-            },
-        }
-    },
-    require('vision')
+            } }
+    }
 ], (err) => {
     if (err) {
         log.error(err);
@@ -48,15 +47,15 @@ server.register([
     server.route({
         method: 'GET',
         path: '/{file*}',
-        handler: {
-            directory: {
+        handler: { directory: {
                 path: __dirname + '/../client/',
                 listing: true
-            }
-        }
+            } }
     });
     // Load the routes from the main router
     routesLoader_1.loadRoutes(server);
+    // Load the install plugins
+    pluginsLoader_1.loadPlugins(server);
 });
 // Start the server
 server.start((err) => {

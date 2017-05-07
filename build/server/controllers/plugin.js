@@ -1,45 +1,36 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const p = require("../lib/plugins");
+const Plugins = require("../lib/plugins");
 const handleErrors_1 = require("../utils/handleErrors");
 const admin_1 = require("./admin");
 const username = 'brendan'; // TEMPORARY
 module.exports.home = function (req, res, next) {
-    p.PluginConnector.getHomePluginName((err, name) => {
-        if (err)
-            return handleErrors_1.handleErr(err, res);
-        res.status(200).send(name);
-    });
+    Plugins.PluginConnector.getHomePluginName()
+        .then((name) => res.status(200).send(name))
+        .catch((err) => handleErrors_1.handleErr(err, res));
+    ;
 };
 module.exports.state = function (req, res, next) {
-    p.PluginConnector.getInstance(req.params.plugin, (err, connector) => {
-        if (err)
-            return handleErrors_1.handleErr(err, res);
+    Plugins.PluginConnector.getInstance(req.params.plugin)
+        .then((connector) => {
         // Check if connector is here, cause else TS will complain at compilation
         if (!connector)
-            return handleErrors_1.handleErr(new Error('CONNECTOR_MISSING'), res);
-        connector.getState((err, state) => {
-            if (err)
-                return handleErrors_1.handleErr(err, res);
-            res.status(200).send(p.State[state]);
-        });
-    });
+            throw new Error('CONNECTOR_MISSING');
+        return connector.getState();
+    }).then((state) => res.status(200).send(Plugins.State[state]))
+        .catch((err) => handleErrors_1.handleErr(err, res));
 };
 module.exports.getList = function (req, res, next) {
-    admin_1.isAdmin(username, (err, admin) => {
-        if (err)
-            return handleErrors_1.handleErr(err, res);
+    admin_1.isAdmin(username)
+        .then((admin) => {
         if (admin) {
             // If the user is admin, retrieve all plugins
-            p.PluginConnector.getPlugins(null, (err, plugins) => {
-                res.status(200).send(plugins);
-            });
+            return Plugins.PluginConnector.getPlugins();
         }
         else {
             // If the user isn't admin, only retrieve enabled plugins
-            p.PluginConnector.getPlugins(p.State.enabled, (err, plugins) => {
-                res.status(200).send(plugins);
-            });
+            return Plugins.PluginConnector.getPlugins(Plugins.State.enabled);
         }
-    });
+    }).then((plugins) => res.status(200).send(plugins))
+        .catch((err) => handleErrors_1.handleErr(err, res));
 };

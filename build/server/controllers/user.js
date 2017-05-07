@@ -37,90 +37,74 @@ module.exports.add = function (req, res) { };
 module.exports.update = function (req, res) {
     // Must be admin to update a user (or the user itself)
     if (!username.localeCompare(req.params.username)) {
-        // Call destroy on the user model with the given username
-        removeUser(req.params, (err) => {
-            if (err)
-                return handleErrors_1.handleErr(err, res);
-            res.sendStatus(200);
-        });
+        // Call update on the user model with the given username
+        updateUser(req.params.user, req.body)
+            .then(() => res.sendStatus(200))
+            .catch((err) => handleErrors_1.handleErr(err, res));
     }
     else {
-        admin_1.isAdmin(username, (err, admin) => {
-            if (err)
-                return handleErrors_1.handleErr(err, res);
+        admin_1.isAdmin(username)
+            .then((admin) => {
             if (!admin)
-                return handleErrors_1.handleErr(new Error('NOT_ADMIN'), res);
-            // Call destroy on the user model with the given username
-            updateUser(req.params.user, req.body, (err) => {
-                if (err)
-                    return handleErrors_1.handleErr(err, res);
-                res.sendStatus(200);
-            });
-        });
+                throw new Error('NOT_ADMIN');
+            // Call update on the user model with the given username
+            return updateUser(req.params.user, req.body);
+        }).then(() => res.sendStatus(200))
+            .catch((err) => handleErrors_1.handleErr(err, res));
     }
 };
 module.exports.delete = function (req, res) {
     // Must be admin to remove a user (or the user itself)
     if (!username.localeCompare(req.params.username)) {
         // Call destroy on the user model with the given username
-        removeUser(req.params.username, (err) => {
-            if (err)
-                return handleErrors_1.handleErr(err, res);
-            res.sendStatus(200);
-        });
+        updateUser(req.params.user, req.body)
+            .then(() => res.sendStatus(200))
+            .catch((err) => handleErrors_1.handleErr(err, res));
     }
     else {
-        admin_1.isAdmin(username, (err, admin) => {
-            if (err)
-                return handleErrors_1.handleErr(err, res);
+        admin_1.isAdmin(username)
+            .then((admin) => {
             if (!admin)
-                return handleErrors_1.handleErr(new Error('NOT_ADMIN'), res);
-            // Call destroy on the user model with the given username
-            removeUser(req.params.user, (err) => {
-                if (err)
-                    return handleErrors_1.handleErr(err, res);
-                res.sendStatus(200);
-            });
-        });
+                throw new Error('NOT_ADMIN');
+            // Call destroy on the user model with the given username and the
+            // given new data
+            return updateUser(req.params.user, req.body);
+        }).then(() => res.sendStatus(200))
+            .catch((err) => handleErrors_1.handleErr(err, res));
     }
 };
-function updateUser(username, newData, next) {
-    // Get the user to modify it afterwards
-    sequelizeWrapper_1.SequelizeWrapper.getInstance().model('user').findById(username)
-        .then((user) => __awaiter(this, void 0, void 0, function* () {
-        if (!user)
-            return next(new Error('NOT_FOUND'));
-        // Set the new values accordingly with the new data
-        if (newData.password) {
-            let salt = yield bcrypt.genSalt();
-            let hash = yield bcrypt.hash(newData.password, salt);
-            user.set('salt', salt);
-            user.set('passwordhash', hash);
-        }
-        if (newData.email)
-            user.set('email', newData.email);
-        if (newData.displayedname)
-            user.set('displayedname', newData.displayedname);
-        if (newData.role)
-            user.set('role', newData.role);
-        user.save().then((user) => {
-            console.log(user.get());
-            next(null);
-            return null;
-        }).catch(next);
-        return null;
-    }));
+function updateUser(username, newData) {
+    return new Promise((resolve, reject) => {
+        // Get the user to modify it afterwards
+        sequelizeWrapper_1.SequelizeWrapper.getInstance().model('user').findById(username)
+            .then((user) => __awaiter(this, void 0, void 0, function* () {
+            if (!user)
+                throw new Error('NOT_FOUND');
+            // Set the new values accordingly with the new data
+            if (newData.password) {
+                let salt = yield bcrypt.genSalt();
+                let hash = yield bcrypt.hash(newData.password, salt);
+                user.set('salt', salt);
+                user.set('passwordhash', hash);
+            }
+            if (newData.email)
+                user.set('email', newData.email);
+            if (newData.displayedname)
+                user.set('displayedname', newData.displayedname);
+            if (newData.role)
+                user.set('role', newData.role);
+            return user.save();
+        })).then(() => resolve())
+            .catch(reject);
+    });
 }
 // Removes a given user from the database
-function removeUser(username, next) {
-    // Call destroy on the user model with the given username
-    sequelizeWrapper_1.SequelizeWrapper.getInstance().model('user').destroy({
-        where: { username: username }
-    }).then(() => {
-        next(null);
-        return null;
-    }).catch((err) => {
-        next(err);
-        return null;
+function removeUser(username) {
+    return new Promise((resolve, reject) => {
+        // Call destroy on the user model with the given username
+        sequelizeWrapper_1.SequelizeWrapper.getInstance().model('user').destroy({
+            where: { username: username }
+        }).then(() => resolve())
+            .catch(reject);
     });
 }
