@@ -111,198 +111,188 @@ export class PluginConnector {
 	// STATIC
 
 	// Get a singleton-ised instance of the connector corresponding to the plugin
-	public static getInstance(pluginName: string, next:(err: Error | null, instance?: PluginConnector) => void) {
-		if(!this.instances) {
-			this.instances = {}; // Initialisation to empty object
-		}
-		if(!this.instances[pluginName]) {
-			SequelizeWrapper.getInstance().model('plugin').count(<s.CountOptions>{ 
-				where: <s.WhereOptions>{ dirname: pluginName }
-			}).then((count) => {
-				this.instances[pluginName] = new PluginConnector(pluginName);
-				if(!count) {
-					this.register(pluginName, (err) => {
-						if(err) return next(err);
-						return next(null, this.instances[pluginName]);
-					});
-				} else {
-					return next(null, this.instances[pluginName]);
-				}
-			});
-		} else {
-			return next(null, this.instances[pluginName]);
-		}
-	}
-
-	// Updates schema of a given plugin based on the info in its manifest
-	public static updateSchema(pluginName: string, next: (err: Error | null) => void): void {
-		try {
-			// Get plugin info from its manifest
-			let infos: PluginInfos = this.getPluginInfos(pluginName);
-			// Update the schema
-			SequelizeWrapper.getInstance().model('plugin').update({
-				schema: infos.schema
-			}, <s.UpdateOptions>{
-				where: <s.WhereOptions>{ dirname: pluginName }
-			}).then(() => { return next(null); })
-			.catch(next);
-		} catch(e) {
-			// We may get an error when trying to open a non-existing manifest
-			next(e);
-		}
-	}
-
-	public static update(next:(err: Error | null) => void) {
-		// Define root for the plugins
-		let root = path.resolve('./plugins');
-		// Get all the plugins from the database
-		SequelizeWrapper.getInstance().model('plugin').findAll()
-		.then((plugins: s.Instance<any>[]) => {
-			let updates = plugins.map((plugin) => {
-				// Check all of the plugins in a Promise
-				return new Promise((resolve, reject) => {
-					let pluginPath = path.join(root, plugin.get('dirname'));
-					if(fs.existsSync(pluginPath)) {
-						// Else, load the plugin infos from its manifest
-						let infos = this.getPluginInfos(plugin.get('dirname'));
-						let newSet = {
-							description: infos.description,
-							schema: infos.schema,
-							state: plugin.get('state'),
-						};
-						// If the plugin was flagged as uninstalled but its folder
-						// is back in the /plugins directory, register it back but
-						// as disabled
-						if(State[<string>plugin.get('state')] === State.uninstalled) {
-							log.info('Re-registered previously uninstalled plugin', plugin.get('dirname'));
-							// Enable it if set as home plugin
-							if(plugin.get('home')) newSet.state = State[State.enabled];
-							else newSet.state = State[State.disabled];
-						}
-						// Update the instance of the plugin
-						plugin.set(newSet);
-						// Save the updated instance in the database
-						plugin.save().then(() => {
-							log.info('Detected plugin', plugin.get('dirname'));
-							// Home has changed in the settings file
-							if(plugin.get('home') && !this.isHome(plugin.get('dirname'))) {
-								// Get the new home plugin's name
-								let newHomePlugin = require(path.resolve('./settings')).home;
-								// Get a connector on the new home plugin
-								PluginConnector.getInstance(newHomePlugin, (err, instance) => {
-									if(err) return reject(err);
-									if(!instance) return next(new Error('CONNECTOR_MISSING'));
-									// Set new home plugin as new home
-									instance.setHome(false, (err) => {
-										if(err) return reject(err);
-										resolve();
-									});
-								});
-								return null;
-							} else {
-								resolve();
-								return null;
-							}
-						}).catch(reject);
+	public static getInstance(pluginName: string): Promise<PluginConnector> {
+		return new Promise<PluginConnector>((resolve, reject) => {
+			if(!this.instances) {
+				this.instances = {}; // Initialisation to empty object
+			}
+			if(!this.instances[pluginName]) {
+				SequelizeWrapper.getInstance().model('plugin').count(<s.CountOptions>{ 
+					where: <s.WhereOptions>{ dirname: pluginName }
+				}).then((count) => {
+					this.instances[pluginName] = new PluginConnector(pluginName);
+					if(!count) {
+						return this.register(pluginName)
 					} else {
-						// If the directory doesn't exist anymore, run the state change
-						plugin.set('state', State[State.uninstalled]);
-						// Save the new state in the database
-						plugin.save().then(() => {
-							log.info('Uninstalled removed plugin', plugin.get('dirname'));
-							resolve();
-						}).catch(reject);
+						return Promise.resolve();
 					}
-				});
-			});
-			
-			Promise.all(updates).then(() => { return next(null) }).catch(next);
-			return null;
-		}).catch(next);
+				}).then(() => resolve(this.instances[pluginName]))
+				.catch((e) => reject(e));
+			} else {
+				return resolve(this.instances[pluginName]);
+			}
+		})
 	}
 
-	// Get the name of the home plugin (undefined if no home plugin is set)
-	public static getHomePluginName(next:(err: Error | null, name?: string | undefined) => void) {
-		// There should be only one home plugin
-		SequelizeWrapper.getInstance().model('plugin').findOne(<s.FindOptions>{
-			where: <s.WhereOptions>{ home: true },
-		}).then((row: s.Instance<any>) => {
-			next(null, row.get('dirname'))
-		}).catch(next);
+	public static update(): Promise<null> {
+		return new Promise<null>((resolve, reject) => {
+			// Define root for the plugins
+			let root = path.resolve('./plugins');
+			// Get all the plugins from the database
+			SequelizeWrapper.getInstance().model('plugin').findAll()
+			.then((plugins: s.Instance<any>[]) => {
+				let updates = plugins.map((plugin) => {
+					// Check all of the plugins in a Promise
+					return new Promise<null>((resolve, reject) => {
+						let pluginPath = path.join(root, plugin.get('dirname'));
+						if(fs.existsSync(pluginPath)) {
+							// Else, load the plugin infos from its manifest
+							let infos = this.getPluginInfos(plugin.get('dirname'));
+							let newSet = {
+								description: infos.description,
+								schema: infos.schema,
+								state: plugin.get('state'),
+							};
+							// If the plugin was flagged as uninstalled but its folder
+							// is back in the /plugins directory, register it back but
+							// as disabled
+							if(State[<string>plugin.get('state')] === State.uninstalled) {
+								log.info('Re-registered previously uninstalled plugin', plugin.get('dirname'));
+								// Enable it if set as home plugin
+								if(plugin.get('home')) newSet.state = State[State.enabled];
+								else newSet.state = State[State.disabled];
+							}
+							// Update the instance of the plugin
+							plugin.set(newSet);
+							// Save the updated instance in the database
+							plugin.save()
+							.then(() => {
+								log.info('Detected plugin', plugin.get('dirname'));
+								// Home has changed in the settings file
+								if(plugin.get('home') && !this.isHome(plugin.get('dirname'))) {
+									// Get the new home plugin's name
+									let newHomePlugin = require(path.resolve('./settings')).home;
+									// Get a connector on the new home plugin
+									return PluginConnector.getInstance(newHomePlugin)
+								} else {
+									return Promise.reject('break');
+								}
+							}).then((instance: any) => {
+									if(!instance) throw new Error('CONNECTOR_MISSING');
+									// Set new home plugin as new home
+									// Have to cast because TypeScript's promise type
+									// inference sucks
+									return (instance as PluginConnector).setHome(false)
+							}).then(() => resolve()).catch((e) => {
+								if(e instanceof Error) {
+									return reject(e);
+								}
+							});
+						} else {
+							// If the directory doesn't exist anymore, run the state change
+							plugin.set('state', State[State.uninstalled]);
+							// Save the new state in the database
+							plugin.save().then(() => {
+								log.info('Uninstalled removed plugin', plugin.get('dirname'));
+								resolve();
+							}).catch(reject);
+						}
+					});
+				});
+
+				Promise.all(updates).then(() => resolve()).catch(reject);
+			}).catch(reject);
+		});
+	}
+
+	// Get the name of the home plugin
+	public static getHomePluginName(): Promise<string> {
+		return new Promise<string | undefined>((resolve, reject) => {
+			// There should be only one home plugin
+			SequelizeWrapper.getInstance().model('plugin').findOne(<s.FindOptions>{
+				where: <s.WhereOptions>{ home: true },
+			}).then((row: s.Instance<any>) => {
+				if(!row) throw new Error('NO_HOME');
+				resolve(row.get('dirname'))
+			}).catch(reject);
+		})
 	}
 
 	// Get data from all of the registered plugins
-	public static getPlugins(state: State | null, next:(err: Error | null, plugins: Object[]) => void) {
-		let whereOptions: s.WhereOptions = {};
-		// Filter on the state if required
-		if(state) whereOptions.state = State[state];
-		// Get all the plugins
-		SequelizeWrapper.getInstance().model('plugin').findAll({
-			where: whereOptions
-		}).then((rows: s.Instance<any>[]) => {
-			let ret = rows.map((row) => {
-				return {
-					name: row.get('name'),
-					description: row.get('description'),
-					state: row.get('state'),
-					home: row.get('home')
-				};
-			});
-			return next(null, ret);
+	public static getPlugins(state?: State): Promise<any[]> {
+		return new Promise<any[]>((resolve, reject) => {
+			let whereOptions: s.WhereOptions = {};
+			// Filter on the state if required
+			if(state) whereOptions.state = State[state];
+			// Get all the plugins
+			SequelizeWrapper.getInstance().model('plugin').findAll({
+				where: whereOptions
+			}).then((rows: s.Instance<any>[]) => {
+				let ret = rows.map((row) => {
+					return {
+						name: row.get('name'),
+						description: row.get('description'),
+						state: row.get('state'),
+						home: row.get('home')
+					};
+				});
+				return resolve(ret);
+			}).catch(reject);
 		});
 	}
 
 	// If the plugin doesn't exist, getInstance will register it in the database
-	private static register(pluginName: string, next:(err: Error | null) => void) {
-		try {
-			// Check if we can register the plugin with its current name
-			if(illegals.indexOf(pluginName) >= 0) {
-				return next(new Error('ILLEGAL_NAME: ' + pluginName));
-			}
-
-			let infos: PluginInfos = this.getPluginInfos(pluginName);			
-			let schema;
-			// Check if schema is defined
-			if(infos.schema) schema = infos.schema;
-			else schema = null; // Else, set it to null
-
-			let state: State;
-			// If the plugin is the home plugin, it must be enabled by default
-			if(this.isHome(pluginName)) state = State.enabled;
-			else state = State.disabled // Else, set it to disabled
-
-			// We don't need to count the rows, as getInstance already does it before
-			SequelizeWrapper.getInstance().model('plugin').create({
-				dirname: pluginName,
-				name: infos.name,
-				description: infos.description || null,
-				schema: schema,
-				state: State[state],
-				home: false
-			}).then(() => {
-				log.info('Registered new plugin', pluginName);
-				if(this.isHome(pluginName)) {
-					// If the new plugin is set as home in the settings file,
-					// set is as such in the database
-					PluginConnector.getInstance(pluginName, (err, instance) => {
-						if(err) return next(err);
-						if(!instance) return next(new Error('CONNECTOR_MISSING'));
-						instance.setHome(false, (err) => {
-							if(err) return next(err);
-							next(null);
-							return null;
-						});
-					});
-					return null;
-				} else {
-					next(null);
-					return null;
+	private static register(pluginName: string): Promise<null> {
+		return new Promise<null>((resolve, reject) => {
+			try {
+				// Check if we can register the plugin with its current name
+				if(illegals.indexOf(pluginName) >= 0) {
+					throw new Error('ILLEGAL_NAME: ' + pluginName);
 				}
-			})
-			.catch(next);
-		} catch(e) {
-			return next(e);
-		}
+				
+				let infos: PluginInfos = this.getPluginInfos(pluginName);			
+				let schema;
+				// Check if schema is defined
+				if(infos.schema) schema = infos.schema;
+				else schema = null; // Else, set it to null
+				
+				let state: State;
+				// If the plugin is the home plugin, it must be enabled by default
+				if(this.isHome(pluginName)) state = State.enabled;
+				else state = State.disabled // Else, set it to disabled
+				
+				// We don't need to count the rows, as getInstance already does it before
+				SequelizeWrapper.getInstance().model('plugin').create({
+					dirname: pluginName,
+					name: infos.name,
+					description: infos.description || null,
+					schema: schema,
+					state: State[state],
+					home: false
+				}).then(() => {
+					log.info('Registered new plugin', pluginName);
+					if(this.isHome(pluginName)) {
+						// If the new plugin is set as home in the settings file,
+						// set is as such in the database
+						return PluginConnector.getInstance(pluginName);
+					} else {
+						// Early break because we don't have to set a home flag
+						return Promise.reject('break');
+					}
+				}).then((instance: PluginConnector) => {					
+					if(!instance) throw new Error('CONNECTOR_MISSING');
+					return instance.setHome(false);
+				}).then(() => {
+					return resolve();
+				}).catch((e) => {
+					if(e instanceof Error) {
+						return reject(e);
+					}
+				});
+			} catch(e) {
+				reject(e);
+			}
+		})
 	}
 
 	// Get plugin infos from its package.json manifest
@@ -346,298 +336,303 @@ export class PluginConnector {
 	// PUBLIC
 
 	// Retrieve data from the database using given filters
-	public getData(options: Options, next:(err: Error | null, data?: Data[]) => void) {
-		// Basic WhereOptions
-		let whereOptions: s.WhereOptions = { plugin: this.pluginName };
-		
-		// Generate the "WhereOptions" object on the "data" column from the
-		// options we got as parameter
-		let data: s.WhereOptions | null = getDataWhereOptions(options);
-
-		// Include conditions on the "data" column only if they exist
-		if(data) whereOptions.data = data;
-
-		// Run the query
-		this.model.data.findAll(<s.FindOptions>{
-			where: whereOptions,
-			limit: options.number
-		}).then((rows) => {
-			let result: Data[] = []; // Initialise to an empty array
-			// Get only the "data" column for each element
-			rows.map((row) => { result.push(<Data>row.get('data')); });
-			// Send the result
-			return next(null, result);
-		}).catch(next); // If there's an error, catch it and send it
+	public getData(options: Options): Promise<Data[]> {
+		return new Promise<Data[]>((resolve, reject) => {
+			// Basic WhereOptions
+			let whereOptions: s.WhereOptions = { plugin: this.pluginName };
+			
+			// Generate the "WhereOptions" object on the "data" column from the
+			// options we got as parameter
+			let data: s.WhereOptions | null = getDataWhereOptions(options);
+			
+			// Include conditions on the "data" column only if they exist
+			if(data) whereOptions.data = data;
+			
+			// Run the query
+			this.model.data.findAll(<s.FindOptions>{
+				where: whereOptions,
+				limit: options.number
+			}).then((rows) => {
+				let result: Data[] = []; // Initialise to an empty array
+				// Get only the "data" column for each element
+				rows.map((row) => { result.push(<Data>row.get('data')); });
+				// Send the result
+				return resolve(result);
+			}).catch(reject); // If there's an error, catch it and send it
+		})
 	}
 
 	// Save the given data in the database
-	public addData(data: Data, next:(err: Error | null) => void) {
-		if(!data.timestamp) {
-			// The timestamp will be the data's unique identifier, so
-			// we need it
-			return next(new Error('TIMESTAMP_MISSING'));
-		}
-
-		this.model.data.count(<s.CountOptions>{ 
-			where: <s.WhereOptions>{
-				plugin: this.pluginName,
-				data: { timestamp: data.timestamp }
+	public addData(data: Data): Promise<Data> {
+		return new Promise<Data>((resolve, reject) => {
+			if(!data.timestamp) {
+				// The timestamp will be the data's unique identifier, so
+				// we need it
+				throw new Error('TIMESTAMP_MISSING');
 			}
-		}).then((count) => {
-			// A timestamp must be unique as it is how we'll be identifying data
-			// for the plugin
-			if(count) return next(new Error('TIMESTAMP_EXISTS'));
-			// Now check if the "meta" object respects the plugin schema if exists
-			return this.isSchemaValid(data, (err, valid) => {
-				if(err) return next(err);
+			
+			this.model.data.count(<s.CountOptions>{ 
+				where: <s.WhereOptions>{
+					plugin: this.pluginName,
+					data: { timestamp: data.timestamp }
+				}
+			}).then((count) => {
+				// A timestamp must be unique as it is how we'll be identifying data
+				// for the plugin
+				if(count) throw new Error('TIMESTAMP_EXISTS');
+				// Now check if the "meta" object respects the plugin schema if exists
+				return this.isSchemaValid(data)
+			}).then((valid) => {
 				if(valid) {
 					// Create the database entry
-					this.model.data.create(<s.CreateOptions>{
+					return this.model.data.create(<s.CreateOptions>{
 						plugin: this.pluginName,
 						data: data
-					}).then(() => { return next(null) }) // No result
-					.catch(next); // If there's an error, catch it and send it
+					});
 				} else {
-					return next(new Error('METADATA_MISMATCH'))
+					throw new Error('METADATA_MISMATCH');
 				}
-			});
-		});
+			}).then((created: any) => resolve(created.get('data'))).catch(reject);
+		})
 	}
 	
 	// Update a data row in the database. The old row is fully replaced by the new one
 	// so any missing data is removed
-	public replaceData(oldData: Data, newData: Data, next:(err: Error | null) => void) {
-		if(!newData.timestamp) {
-			// The timestamp will be the data's unique identifier, so
-			// we need it
-			return next(new Error('TIMESTAMP_MISSING'));
-		}
-
-		// Now check if the "meta" object respects the plugin schema if exists
-		this.isSchemaValid(newData, (err, valid) => {
-			if(err) return next(err);
-			if(valid) {
-				// Replace the database entry
-				this.model.data.update({ data: newData }, <s.UpdateOptions>{
-					where: <s.WhereOptions> {
-						plugin: this.pluginName,
-						data: oldData
-					}
-				}).then((result) => {
-					// If no row were updated, it means we got the original data wrong
-					// so raise an error
-					if(!result[0]) return next(new Error('NO_ROW_UPDATED'));
-					else return next(null);
-				}).catch(next);
-			} else {
-				return next(new Error('METADATA_MISMATCH'))
+	public replaceData(oldData: Data, newData: Data): Promise<null> {
+		return new Promise<null>((resolve, reject) => {
+			if(!newData.timestamp) {
+				// The timestamp will be the data's unique identifier, so
+				// we need it
+				throw new Error('TIMESTAMP_MISSING');
 			}
-		});
+			
+			// Now check if the "meta" object respects the plugin schema if exists
+			this.isSchemaValid(newData)
+			.then((valid) => {
+				if(valid) {
+					// Replace the database entry
+					return this.model.data.update({ data: newData }, <s.UpdateOptions>{
+						where: <s.WhereOptions> {
+							plugin: this.pluginName,
+							data: oldData
+						}
+					})
+				} else {
+					throw new Error('METADATA_MISMATCH');
+				}				
+			}).then((result) => {
+				// If no row were updated, it means we got the original data wrong
+				// so raise an error
+				if(!result[0]) return reject(new Error('NO_ROW_UPDATED'));
+				else return resolve();
+			}).catch(reject);
+		})
 	}
 
 	// Delete data from the database selected from the given options
-	public deleteData(options: Options, next:(err: Error | null) => void) {
-		// Basic WhereOptions
-		let whereOptions: s.WhereOptions = { plugin: this.pluginName };
-
-		// Generate the "WhereOptions" object on the "data" column from the
-		// options we got as parameter
-		let data: s.WhereOptions | null = getDataWhereOptions(options);
-
-		// Include conditions on the "data" column only if they exist
-		if(data) whereOptions.data = data;
-
-		this.model.data.destroy(<s.DestroyOptions>{
-			where: whereOptions
-		}).then(() => { return next(null); })
-		.catch(next);
+	public deleteData(options: Options): Promise<null> {
+		return new Promise<null>((resolve, reject) => {
+			// Basic WhereOptions
+			let whereOptions: s.WhereOptions = { plugin: this.pluginName };
+			
+			// Generate the "WhereOptions" object on the "data" column from the
+			// options we got as parameter
+			let data: s.WhereOptions | null = getDataWhereOptions(options);
+			
+			// Include conditions on the "data" column only if they exist
+			if(data) whereOptions.data = data;
+			
+			this.model.data.destroy(<s.DestroyOptions>{ where: whereOptions })
+			.then(() => resolve()).catch(reject);
+		})
 	}
 
 	// Set the plugin state
-	public setState(newState: State, next:(err: Error | null) => void) {
-		this.model.plugin.update({
-			state: State[newState] // Get the string from the given state
-		}, <s.UpdateOptions>{
-			where: <s.WhereOptions>{ dirname: this.pluginName }
-		}).then(() => { return next(null) })
-		.catch(next);
+	public setState(newState: State): Promise<null> {
+		return new Promise<null>((resolve, reject) => {
+			this.model.plugin.update({
+				state: State[newState] // Get the string from the given state
+			}, <s.UpdateOptions>{
+				where: <s.WhereOptions>{ dirname: this.pluginName }
+			}).then(() => resolve(null)).catch(reject);
+		})
 	}
 
 	// Get the current plugin state as a member of the State enum
-	public getState(next: (err: Error | null, state?: State) => void) {
-		// The plugin's dirname is it's primary key
-		this.model.plugin.findById(this.pluginName)
-		.then((row) => {
-			next(null, State[<string>row.get('state')]);
-			return null;
+	public getState(): Promise<State> {
+		return new Promise<State>((resolve, reject) => {
+			// The plugin's dirname is it's primary key
+			this.model.plugin.findById(this.pluginName)
+			.then((row) => {
+				resolve(State[<string>row.get('state')]);
+				return null;
+			}).catch(reject); // If there's an error, catch it and send it
 		})
-		.catch(next); // If there's an error, catch it and send it
 	}
 	
 	// Returns the user's access level on the plugin as a member of the AccessLevel enum
-	public getAccessLevel(username: string, next:(err: Error | null, level?: AccessLevel) => void) {
-		isAdmin(username, this.model.user, (err, admin) => {
-			if(err) return next(err);
-			// If the user is admin on the platform, it gives it read/write
-			// access to all plugins
-			if(admin) return next(null, AccessLevel.readwrite);
-			// If the user isn't admin, we check the access level relative
-			// to the plugin
-			return this.model.access.findOne(<s.FindOptions>{
-				where: <s.WhereOptions>{
-					plugin: this.pluginName,
-					user: username
-				}
-			}).then((row) => {
-				// Casting the level as a string, because else TypeScript
-				// assumes it to be an integer, and the whole thing to 
-				// return a string
-				if(row) return next(null, AccessLevel[<string>row.get('level')]);
-				else return next(null, AccessLevel.none);
-			}).catch(next);
-		})
+	public getAccessLevel(username: string): Promise<AccessLevel> {
+		return new Promise<AccessLevel>((resolve, reject) => {
+			isAdmin(username, this.model.user)
+			.then((admin) => {
+				// If the user is admin on the platform, it gives it read/write
+				// access to all plugins
+				if(admin) return resolve(AccessLevel.readwrite);
+				// If the user isn't admin, we check the access level relative
+				// to the plugin
+				return this.model.access.findOne(<s.FindOptions>{
+					where: <s.WhereOptions>{
+						plugin: this.pluginName,
+						user: username
+					}
+				}).then((row) => {
+					// Casting the level as a string, because else TypeScript
+					// assumes it to be an integer, and the whole thing to 
+					// return a string
+					if(row) return resolve(AccessLevel[<string>row.get('level')]);
+					else return resolve(AccessLevel.none);
+				}).catch(reject);
+			}).catch(reject);
+		});
 	}
 
 	// Set access level on the plugin for a given user
-	public setAccessLevel(username: string, level: AccessLevel, next:(err: Error | null) => void) {
-		isAdmin(username, this.model.user, (err, admin) => {
-			if(err) return next(err);
-			// If the user is admin on the platform, it gives it read/write
-			// access to all plugins, so we can't change it
-			if(admin) return next(new Error('NOT_ADMIN'));
-			// If the user isn't admin, we check if there's an access level to
-			// add or update
-			this.model.access.count(<s.CountOptions>{
-				where: <s.WhereOptions>{
-					plugin: this.pluginName,
-					user: username
-				}
-			}).then((count) => {
+	public setAccessLevel(username: string, level: AccessLevel): Promise<null> {
+		return new Promise<null>((resolve, reject) => {
+			isAdmin(username, this.model.user)
+			.then((admin) => {
+				// If the user is admin on the platform, it gives it read/write
+				// access to all plugins, so we can't change it
+				// Sending the NOT_ADMIN error cause the current user (as all others)
+				// isn't privileged enough to downgrade an admin's access
+				if(admin) throw new Error('NOT_ADMIN');
+				// If the user isn't admin, we check if there's an access level to
+				// add or update
+				return this.model.access.count(<s.CountOptions>{
+					where: <s.WhereOptions>{
+						plugin: this.pluginName,
+						user: username
+					}
+				})
+			})
+			.then((count) => {
 				// No row exists for this user: it has no access on the plugin.
 				// Let's create one.
 				if(!count) {
 					// If the access level is "none", don't create a row
-					if(level === AccessLevel.none) next(null)
+					if(level === AccessLevel.none) return Promise.resolve()
 					return this.model.access.create(<s.CreateOptions>{
 						plugin: this.pluginName,
 						user: username,
 						level: AccessLevel[level]
-					}).then(() => { return next(null) })
-					.catch(next);
+					});
 				} else {
 					// A row already exists, we update it or delete it.
 					if(level === AccessLevel.none) {
 						// Passing an access level to none means removing the
 						// row from the database
-						this.model.access.destroy(<s.DestroyOptions>{
+						return this.model.access.destroy(<s.DestroyOptions>{
 							where: <s.WhereOptions>{
 								plugin: this.pluginName,
 								user: username
 							}
-						}).then(() => {
-							next(null);
-							return null;
-						})
-						.catch(next);
+						});
 					} else {
 						// If the access level isn't "none", just update the row
-						this.model.access.update({
+						return this.model.access.update({
 							level: AccessLevel[level]
 						}, <s.UpdateOptions>{
 							where: <s.WhereOptions> {
 								plugin: this.pluginName,
 								user: username
 							}
-						}).then(() => {
-							next(null);
-							return null
-						})
-						.catch(next);
+						});
 					}
 				}
-				return null;
-			});
+			}).then(() => resolve()).catch(reject);
 		});
 	}
 
 	// Move the home flag to the given plugin
-	public setHome(disableOld: boolean, next:(err: Error | null) => void) {
-		// First check if the plugin exists
-		SequelizeWrapper.getInstance().model('plugin').count(<s.CountOptions>{ 
-			where: <s.WhereOptions>{ dirname: this.pluginName }
-		}).then((count) => {
-			if(!count) return next(new Error('NO_PLUGIN')); // Plugin doesn't exist
-			this.removeHomeFlag(disableOld, (err) => {
-				if(err) return next(err);
-				this.setHomeFlag(this.pluginName, (err) => {
-					if(err) return next(err);
-					log.info('Set', this.pluginName, 'as the new home plugin');
-					return next(null);
-				});
-			});
-			return null;
-		}).catch(next);
+	public setHome(disableOld: boolean): Promise<null> {
+		return new Promise<null>((resolve, reject) => {
+			// First check if the plugin exists
+			SequelizeWrapper.getInstance().model('plugin').count(<s.CountOptions>{ 
+				where: <s.WhereOptions>{ dirname: this.pluginName }
+			})
+			.then((count) => {
+				if(!count) throw new Error('NO_PLUGIN'); // Plugin doesn't exist
+				return this.removeHomeFlag(disableOld)
+			})
+			.then(() => this.setHomeFlag(this.pluginName))
+			.then(() => {
+				log.info('Set', this.pluginName, 'as the new home plugin');
+				return resolve();					
+			}).catch(reject)
+		})
 	}
 
 	// PRIVATE
 
 	// Removes the home flag of the current home plugin
-	private removeHomeFlag(disableOld: boolean, next:(err: Error | null) => void) {
-		let updatedValues = {
-			home: false,
-			state: State[State.enabled] // The previous home plugin is obviously enabled
-		};
-		// If the disableOld boolean is set to true, we disable the previous home plugin
-		if(disableOld) updatedValues.state = State[State.disabled];
-		SequelizeWrapper.getInstance().model('plugin').update(updatedValues, <s.UpdateOptions>{
-			where: <s.WhereOptions>{ home: true }
-		}).then(() => {
-			next(null);
-			return null;
-		}).catch(next);
+	private removeHomeFlag(disableOld: boolean): Promise<null> {
+		return new Promise<null>((resolve, reject) => {
+			let updatedValues = {
+				home: false,
+				state: State[State.enabled] // The previous home plugin is obviously enabled
+			};
+			// If the disableOld boolean is set to true, we disable the previous home plugin
+			if(disableOld) updatedValues.state = State[State.disabled];
+			SequelizeWrapper.getInstance().model('plugin').update(updatedValues, <s.UpdateOptions>{
+				where: <s.WhereOptions>{ home: true }
+			}).then(() => resolve()).catch(reject);
+		})
 	}
 	
 	// Set home flag to given plugin
-	private setHomeFlag(pluginName: string, next:(err: Error | null) => void) {
-		SequelizeWrapper.getInstance().model('plugin').update({
-			home: true,
-			state: State[State.enabled] // Enable the new home plugin
-		}, <s.UpdateOptions>{
-			where: <s.WhereOptions>{ dirname: pluginName }
-		}).then(() => { return next(null); })
-		.catch(next);
+	private setHomeFlag(pluginName: string): Promise<null> {
+		return new Promise<null>((resolve, reject) => {
+			SequelizeWrapper.getInstance().model('plugin').update({
+				home: true,
+				state: State[State.enabled] // Enable the new home plugin
+			}, <s.UpdateOptions>{
+				where: <s.WhereOptions>{ dirname: pluginName }
+			}).then(() => resolve()).catch(reject);
+		})
 	}
 
 	// Check if the provided metadata is valid agains the plugin schema
-	private isSchemaValid(data: Data, next:(err: Error | null, valid?: boolean) => void) {
-		// Check if a schema is defined first
-		this.model.plugin.findById(this.pluginName).then((row) => {
-			let schema = row.get('schema');
-			if(schema && Object.keys(schema).length) {
-				// Determining if the "meta" sub-object is required
-				let required: boolean = false;
-				for(let metadata in schema) {
-					if(schema[metadata].required) required = true;
-				}
-				// Run the check only if at least one metadata is required
-				if(data.meta && Object.keys(data.meta).length) {
-					// Run the check
-					if(revalidator.validate(data.meta, schema).valid) {
-						return next(null, true);
-					} else {
-						return next(null, false);
+	private isSchemaValid(data: Data): Promise<boolean> {
+		return new Promise<boolean>((resolve, reject) => {
+			// Check if a schema is defined first
+			this.model.plugin.findById(this.pluginName).then((row) => {
+				let schema = row.get('schema');
+				if(schema && Object.keys(schema).length) {
+					// Determining if the "meta" sub-object is required
+					let required: boolean = false;
+					for(let metadata in schema) {
+						if(schema[metadata].required) required = true;
 					}
-				} else if(!required) {
-					// If no metadata are required, we don't care if there's a
-					// "meta" sub-object or not
-					return next(null, true);
+					// Run the check only if at least one metadata is required
+					if(data.meta && Object.keys(data.meta).length) {
+						// Run the check
+						if(revalidator.validate(data.meta, schema).valid) {
+							return resolve(true);
+						} else {
+							return resolve(false);
+						}
+					} else if(!required) {
+						// If no metadata are required, we don't care if there's a
+						// "meta" sub-object or not
+						return resolve(true);
+					} else {
+						return resolve(false); // No metadata where metadata was expected
+					}
 				} else {
-					return next(null, false); // No metadata where metadata was expected
+					return resolve(true); // No schema in db: No need to check
 				}
-			} else {
-				return next(null, true); // No schema in db: No need to check
-			}
-		}).catch(next);
+			}).catch(reject);
+		})
 	}
 }
 
@@ -651,14 +646,16 @@ abstract class PluginInfos {
 }
 
 // Use a given Sequelize model to check if a user with a given username is admin
-function isAdmin(username: string, model: s.Model<any,any>, next:(err: Error | null, admin?: boolean) => void): void {
-	// Find user from its unique username
-    model.findById(username).then((row) => {
-		// If no user, well, no admin
-		if(!row) return next(null, false);
-		// Compare the role with the one we have in the Role enum
-		return next(null, row.get('role').localeCompare(Role[Role.admin]) === 0);
-	}).catch(next); // Error handling
+function isAdmin(username: string, model: s.Model<any,any>): Promise<boolean> {
+	return new Promise<boolean>((resolve, reject) => {
+		// Find user from its unique username
+		model.findById(username).then((row) => {
+			// If no user, well, no admin
+			if(!row) return resolve(false);
+			// Compare the role with the one we have in the Role enum
+			return resolve(row.get('role').localeCompare(Role[Role.admin]) === 0);
+		}).catch(reject); // Error handling
+	});
 }
 
 // Generate a Sequelize WhereOptions instance if needed from the options

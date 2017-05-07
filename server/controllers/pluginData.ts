@@ -1,10 +1,13 @@
-import * as p from '../lib/plugins';
-import * as e from 'express';
+import * as Plugins from '../lib/plugins';
+import * as express from 'express';
 import {handleErr} from '../utils/handleErrors';
 
 // TODO: Check auth headers
 
-module.exports.get = function(req: e.Request, res: e.Response) {
+module.exports.get = function(req: express.Request, res: express.Response) {
+	let connector: Plugins.PluginConnector;
+	let data: Plugins.Data[];
+
 	// We must have at least one query parameter, which is the number of
 	// elements to return
 	if(!req.query.number) {
@@ -12,142 +15,150 @@ module.exports.get = function(req: e.Request, res: e.Response) {
 	}
 
 	// Grab a connector and load the elements number
-	p.PluginConnector.getInstance(req.params.plugin, (err, connector) => {
-		if(err) return handleErr(err, res);
+	Plugins.PluginConnector.getInstance(req.params.plugin)
+	.then((res) => {
+		connector = res;
 		// Check if connector is here, cause else TS will complain at compilation
-		if(!connector) return handleErr(new Error('CONNECTOR_MISSING'), res);
+		if(!connector) throw new Error('CONNECTOR_MISSING');
 		
 		// If the plugin isn't enabled, all operations on data should fail
-		connector.getState((err, state) => {
-			if(err) return handleErr(err, res);
-			if(state !== p.State.enabled) return handleErr(new Error('PLUGIN_DISABLED'), res);
+		return connector.getState();
+	}).then((state) => {
+		if(state !== Plugins.State.enabled) throw new Error('PLUGIN_DISABLED');
 
-			let options: p.Options = <p.Options>{ number: parseInt(req.query.number) };
-			
-			// Load optional filters
-			if(req.query.startTimestamp) options.startTimestamp = req.query.startTimestamp;
-			if(req.query.type) options.type = req.query.type;
-			
-			// Run the query
-			return connector.getData(options, (err, data) => {
-				if(err) return handleErr(err, res);
-				// Check the user's access level before returning the data
-				connector.getAccessLevel('brendan', (err, level) => { // TODO: Replace hard-coded username
-					if(err) return handleErr(err, res);
-					if(data) {
-						// If the access level is set to "none", don't return drafts
-						data = data.filter((data) => {
-							if(level === p.AccessLevel.none) {
-								if(!data.status.localeCompare('private')) return false;
-								else return true;
-							}
-							return true;
-						});
-					}
-				});
-				return res.status(200).send(data);
+		let options: Plugins.Options = <Plugins.Options>{ number: parseInt(req.query.number) };
+		
+		// Load optional filters
+		if(req.query.startTimestamp) options.startTimestamp = req.query.startTimestamp;
+		if(req.query.type) options.type = req.query.type;
+		
+		// Run the query
+		return connector.getData(options);
+	}).then((res) => {
+		data = res;
+		// Check the user's access level before returning the data
+		return connector.getAccessLevel('brendan');
+	}).then((level) => { // TODO: Replace hard-coded username
+		if(data) {
+			// If the access level is set to "none", don't return drafts
+			data = data.filter((data) => {
+				if(level === Plugins.AccessLevel.none) {
+					if(!data.status.localeCompare('private')) return false;
+					else return true;
+				}
+				return true;
 			});
-		});
-	});
+		}
+		res.status(200).send(data);
+	}).catch((e) => handleErr(e, res));
 }
 
-module.exports.add = function(req: e.Request, res: e.Response) {
+module.exports.add = function(req: express.Request, res: express.Response) {
 	// Check if the data is valid
-	if(p.Data.isValid(req.body)) {
+	if(Plugins.Data.isValid(req.body)) {
+		let connector: Plugins.PluginConnector;
+		let state: Plugins.State;
+
 		// If data is valid, load the connector
-		p.PluginConnector.getInstance(req.params.plugin, (err, connector) => {
-			if(err) return handleErr(err, res);
+		Plugins.PluginConnector.getInstance(req.params.plugin)
+		.then((res) => {
+			connector = res;
 			// Check if connector is here, cause else TS will complain at compilation
-			if(!connector) return handleErr(new Error('CONNECTOR_MISSING'), res);
+			if(!connector) throw new Error('CONNECTOR_MISSING');
 			// If the plugin isn't enabled, all operations on data should fail
-			connector.getState((err, state) => {
-				if(err) return handleErr(err, res);
-				if(state !== p.State.enabled) return handleErr(new Error('PLUGIN_DISABLED'), res);
-				// Check the user's access level before returning the data
-				connector.getAccessLevel('brendan', (err, level) => { // TODO: Replace hard-coded username
-					if(err) return handleErr(err, res);
-					// User can add data only if it has write access on the plugin's data
-					if(level === p.AccessLevel.readwrite) {
-						// Run the query
-						return connector.addData(<p.Data>req.body, (err) => {
-							if(err) return handleErr(err, res);
-							res.sendStatus(200);
-						});
-					}
-				});
-			});
-		});
+			return connector.getState();
+		}).then((res) => {
+			state = res;
+
+			if(state !== Plugins.State.enabled) throw new Error('PLUGIN_DISABLED');
+			// Check the user's access level before returning the data
+			return connector.getAccessLevel('brendan'); // TODO: Replace hard-coded username
+		}).then((level) => {
+			// User can add data only if it has write access on the plugin's data
+			if(level === Plugins.AccessLevel.readwrite) {
+				// Run the query
+				return connector.addData(<Plugins.Data>req.body)
+			} else {
+				throw new Error('UNAUTHORISED');
+			}
+		}).then(() => res.sendStatus(200))
+		.catch((e) => handleErr(e, res));
 	} else {
 		// If the data is invalid: 400 Bad Request
 		return handleErr(new Error('DATA_INVALID'), res);
 	}
 }
 
-module.exports.replace = function(req: e.Request, res: e.Response) {
+module.exports.replace = function(req: express.Request, res: express.Response) {
 	// Check if all of the data is valid
-	if(p.Data.isValid(req.body.old) && p.Data.isValid(req.body.new)) {
-		p.PluginConnector.getInstance(req.params.plugin, (err, connector) => {
-			if(err) return handleErr(err, res);
-			// Check if connector is here, cause else TS will complain at compilation
-			if(!connector) return handleErr(new Error('CONNECTOR_MISSING'), res);
-			// If the plugin isn't enabled, all operations on data should fail
-			connector.getState((err, state) => {
-				if(err) return handleErr(err, res);
-				if(state !== p.State.enabled) return handleErr(new Error('PLUGIN_DISABLED'), res);
+	if(Plugins.Data.isValid(req.body.old) && Plugins.Data.isValid(req.body.new)) {
+		let connector: Plugins.PluginConnector;
+		let state: Plugins.State;
 
-				// Check the user's access level before returning the data
-				connector.getAccessLevel('brendan', (err, level) => { // TODO: Replace hard-coded username
-					if(err) return handleErr(err, res);
-					// User can edit data only if it has write access on the plugin's data
-					if(level === p.AccessLevel.readwrite) {
-						// Run the query
-						return connector.replaceData(<p.Data>req.body.old, <p.Data>req.body.new, (err) => {
-							if(err) return handleErr(err, res);
-							res.sendStatus(200);
-						});
-					}
-				});
-			});
-		});
+		Plugins.PluginConnector.getInstance(req.params.plugin)
+		.then((res) => {
+			connector = res;
+			// Check if connector is here, cause else TS will complain at compilation
+			if(!connector) throw new Error('CONNECTOR_MISSING');
+			// If the plugin isn't enabled, all operations on data should fail
+			return connector.getState();
+		}).then((res) => {
+			state = res;
+			if(state !== Plugins.State.enabled) throw new Error('PLUGIN_DISABLED');
+			// Check the user's access level before returning the data
+			return connector.getAccessLevel('brendan'); // TODO: Replace hard-coded username
+		}).then((level) => {
+			// User can edit data only if it has write access on the plugin's data
+			if(level === Plugins.AccessLevel.readwrite) {
+				// Run the query
+				return connector.replaceData(<Plugins.Data>req.body.old, <Plugins.Data>req.body.new);
+			} else {
+				throw new Error('UNAUTHORISED');
+			}
+		}).then(() => res.sendStatus(200))
+		.catch((e) => handleErr(e, res));
 	} else {
 		// If the data is invalid: 400 Bad Request
 		return handleErr(new Error('DATA_INVALID'), res);
 	}
 }
 
-module.exports.delete = function(req: e.Request, res: e.Response) {
+module.exports.delete = function(req: express.Request, res: express.Response) {
+	let connector: Plugins.PluginConnector;
+	let state: Plugins.State;
 	// We must have at least one query parameter, which is the number of
 	// elements to return
 	if(!req.query.number) {
 		return handleErr(new Error('NUMBER_MISSING'), res);
 	}
 	// Get connector
-	p.PluginConnector.getInstance(req.params.plugin, (err, connector) => {
-		if(err) return handleErr(err, res);
-		if(!connector) return handleErr(new Error('CONNECTOR_MISSING'), res);
+	Plugins.PluginConnector.getInstance(req.params.plugin)
+	.then((res) => {
+		connector = res;
+
+		if(!connector) throw new Error('CONNECTOR_MISSING');
 		
 		// If the plugin isn't enabled, all operations on data should fail
-		connector.getState((err, state) => {
-			if(err) return handleErr(err, res);
-			if(state !== p.State.enabled) return handleErr(new Error('PLUGIN_DISABLED'), res);
+		return connector.getState();
+	}).then((res) => {
+		state = res;
 
-			let options: p.Options = <p.Options>{ number: parseInt(req.query.number) };
-			
+		if(state !== Plugins.State.enabled) throw new Error('PLUGIN_DISABLED');
+
+		// Check the user's access level before returning the data
+		return connector.getAccessLevel('brendan'); // TODO: Replace hard-coded username
+	}).then((level) => {		
+		// User can delete data only if it has write access on the plugin's data
+		if(level === Plugins.AccessLevel.readwrite) {
+			let options: Plugins.Options = <Plugins.Options>{ number: parseInt(req.query.number) };
 			// Load optional filters
 			if(req.query.startTimestamp) options.startTimestamp = req.query.startTimestamp;
 			if(req.query.type) options.type = req.query.type;
-			// Check the user's access level before returning the data
-			connector.getAccessLevel('brendan', (err, level) => { // TODO: Replace hard-coded username
-				if(err) return handleErr(err, res);
-				// User can delete data only if it has write access on the plugin's data
-				if(level === p.AccessLevel.readwrite) {
-					// Run the query
-					connector.deleteData(options, (err) => {
-						if(err) return handleErr(err, res);
-						res.sendStatus(200);
-					})
-				}
-			});
-		});
-	});
+			// Run the query
+			return connector.deleteData(options);
+		} else {
+			throw new Error('UNAUTHORISED');
+		}
+	}).then(() => res.sendStatus(200))
+	.catch((e) => handleErr(e, res));
 }
