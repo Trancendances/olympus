@@ -13,6 +13,9 @@ export function handleErr(err: Error, res: e.Response): void {
 		case 'NUMBER_MISSING':
 			code = 400;
 			break;
+		case 'UNAUTHORISED':
+			code = 401;
+			break;
 		case 'NOT_ADMIN':
 		case 'PLUGIN_DISABLED':
 			code = 403;
