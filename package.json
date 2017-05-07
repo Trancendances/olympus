@@ -12,6 +12,7 @@
     "type": "git",
     "url": "git+https://github.com/Trancendances/olympus.git"
   },
+  "bin": "build/server/index.js",
   "dependencies": {
     "@types/bcrypt": "1.0.0",
     "@types/boom": "4.3.1",
